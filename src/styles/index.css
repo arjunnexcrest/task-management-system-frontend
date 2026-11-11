@@ -1,0 +1,146 @@
+:root {
+  color-scheme: light;
+  --bg: #f3efe6;
+  --panel: #fffdf8;
+  --ink: #1c2420;
+  --muted: #5d6a63;
+  --line: #d7d0c3;
+  --accent: #0f6b4c;
+  --accent-soft: #d9eee4;
+  --sidebar: #14231c;
+  --sidebar-text: #e8f2ec;
+  --sidebar-muted: #9bb5a7;
+  font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(15, 107, 76, 0.12), transparent 35%),
+    linear-gradient(180deg, #f7f3ea 0%, #ebe4d7 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: var(--sidebar);
+  color: var(--sidebar-text);
+  padding: 1.5rem 1rem;
+  border-right: 1px solid #0d1813;
+}
+
+.brand {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 1.5rem;
+  padding: 0 0.5rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.brand span {
+  color: var(--sidebar-muted);
+  font-size: 0.85rem;
+}
+
+.sidebar nav {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.nav-link {
+  display: block;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.5rem;
+  color: var(--sidebar-muted);
+}
+
+.nav-link:hover,
+.nav-link.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--sidebar-text);
+}
+
+.content {
+  padding: 2rem;
+}
+
+.placeholder {
+  max-width: 48rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 1.75rem;
+  box-shadow: 0 12px 40px rgba(28, 36, 32, 0.06);
+}
+
+.eyebrow {
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.placeholder h1 {
+  margin: 0 0 0.75rem;
+  font-size: clamp(1.75rem, 3vw, 2.4rem);
+  line-height: 1.15;
+}
+
+.lede {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.placeholder ul {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: var(--ink);
+}
+
+.placeholder li + li {
+  margin-top: 0.35rem;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid #0d1813;
+  }
+
+  .sidebar nav {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
+  .content {
+    padding: 1.25rem;
+  }
+}

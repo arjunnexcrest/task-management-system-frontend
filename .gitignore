@@ -1,0 +1,36 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Environment (commit only .env.example)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Project requirement / design documents (do not push)
+*.pdf
+*.docx
+SOFTWARE REQUIREMENTS SPECIFICATION (SRS).pdf
+Corrected_Project_Task_Management_Database_Design_Readable.docx
