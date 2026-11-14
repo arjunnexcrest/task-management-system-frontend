@@ -144,3 +144,254 @@ a {
     padding: 1.25rem;
   }
 }
+
+
+/* TMS Enterprise UI Components */
+.page-container {
+  max-width: 1280px;
+  display: grid;
+  gap: 1.5rem;
+}
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 6px 24px rgba(28, 36, 32, 0.04);
+}
+
+.page-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.page-header p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border-radius: 0.55rem;
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  transition: all 0.15s ease;
+}
+
+.btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: #0b533b;
+  color: #fff;
+}
+
+.btn-sm {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.8rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.stat-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  padding: 1.1rem 1.25rem;
+}
+
+.stat-card .stat-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.stat-card .stat-value {
+  font-size: 1.65rem;
+  font-weight: 700;
+  margin-top: 0.25rem;
+  color: var(--ink);
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 6px 24px rgba(28, 36, 32, 0.04);
+}
+
+.card h2, .card h3 {
+  margin-top: 0;
+  margin-bottom: 0.85rem;
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.input, .select, .textarea {
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: #fff;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.form-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.form-field label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.data-table th, .data-table td {
+  text-align: left;
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.data-table th {
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.badge-active, .badge-completed, .badge-approved {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.badge-critical, .badge-blocked, .badge-delayed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge-high, .badge-in-progress, .badge-assigned {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.badge-medium, .badge-planned, .badge-in-review {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.progress-track {
+  width: 100%;
+  height: 8px;
+  background: #e5e0d5;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+.kanban-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.kanban-col {
+  background: rgba(255, 253, 248, 0.85);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 0.9rem;
+}
+
+.kanban-col-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  font-size: 0.88rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.kanban-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  padding: 0.85rem;
+  margin-bottom: 0.65rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}

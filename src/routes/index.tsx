@@ -16,6 +16,7 @@ import { Page as RolePermissionPage } from '@/modules/rbac/pages/RolePermissionP
 import { Page as ProjectListPage } from '@/modules/projects/pages/ProjectListPage'
 import { Page as ProjectFormPage } from '@/modules/projects/pages/ProjectFormPage'
 import { Page as ProjectOverviewPage } from '@/modules/projects/pages/ProjectOverviewPage'
+import { Page as ProjectAssignmentPage } from '@/modules/projects/pages/ProjectAssignmentPage'
 import { Page as ProjectPlanningPage } from '@/modules/projects/pages/ProjectPlanningPage'
 import { Page as ProjectMilestonesPage } from '@/modules/projects/pages/ProjectMilestonesPage'
 import { Page as ProjectTimelinePage } from '@/modules/projects/pages/ProjectTimelinePage'
@@ -57,6 +58,8 @@ export function AppRoutes() {
         <Route path="projects/new" element={<ProjectFormPage />} />
         <Route path="projects/:id" element={<ProjectOverviewPage />} />
         <Route path="projects/:id/edit" element={<ProjectFormPage />} />
+        <Route path="projects/:id/assignments" element={<ProjectAssignmentPage />} />
+        <Route path="projects/:id/team" element={<ProjectAssignmentPage />} />
         <Route path="projects/:id/planning" element={<ProjectPlanningPage />} />
         <Route path="projects/:id/milestones" element={<ProjectMilestonesPage />} />
         <Route path="projects/:id/timeline" element={<ProjectTimelinePage />} />

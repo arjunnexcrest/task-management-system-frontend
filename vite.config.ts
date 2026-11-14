@@ -11,6 +11,7 @@ export default defineConfig({
     },
   },
   server: {
+    host: true,
     port: 5173,
     proxy: {
       // Forward /api to the Django backend during local development.
