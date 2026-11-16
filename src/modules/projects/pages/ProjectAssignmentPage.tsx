@@ -199,13 +199,16 @@ export function Page() {
           <Link to={`/projects/${project.id}`} className="btn">
             Project Overview
           </Link>
+          <Link to={`/projects/${project.id}/team`} className="btn btn-primary">
+            Project Team &amp; Participation
+          </Link>
           <Link to="/departments" className="btn">
             Manage Departments
           </Link>
           <Link to="/teams" className="btn">
             Manage Teams
           </Link>
-          <Link to={`/tasks/new?project=${project.id}`} className="btn btn-primary">
+          <Link to={`/tasks/new?project=${project.id}`} className="btn">
             + Assign Task
           </Link>
         </div>

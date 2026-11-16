@@ -144,7 +144,10 @@ export function Page() {
           <p>{project.description || 'No description provided.'}</p>
         </div>
         <div className="btn-row" style={{ flexWrap: 'wrap' }}>
-          <Link to={`/projects/${project.id}/assignments`} className="btn btn-primary">
+          <Link to={`/projects/${project.id}/team`} className="btn btn-primary">
+            Team &amp; Participation ({project.members_count ?? project.members.length})
+          </Link>
+          <Link to={`/projects/${project.id}/assignments`} className="btn">
             PM &amp; Dept Mapping
           </Link>
           <Link to={`/projects/${project.id}/edit`} className="btn">
