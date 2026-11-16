@@ -1,13 +1,31 @@
 import { type FormEvent, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { type LookupData, projectsApi } from '@/modules/projects/api'
-import { type TaskDetail, tasksApi } from '@/modules/tasks/api'
+import { type Task, type TaskDetail, tasksApi } from '@/modules/tasks/api'
+
+const TASK_STATUSES: Task['status'][] = [
+  'Backlog',
+  'To Do',
+  'Assigned',
+  'In Progress',
+  'On Hold',
+  'Blocked',
+  'In Review',
+  'Changes Requested',
+  'Approved',
+  'Completed',
+  'Cancelled',
+]
 
 export function Page() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const [task, setTask] = useState<TaskDetail | null>(null)
   const [lookup, setLookup] = useState<LookupData | null>(null)
+  const [projectTasks, setProjectTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
+  const [pageError, setPageError] = useState<string | null>(null)
+  const [pageSuccess, setPageSuccess] = useState<string | null>(null)
 
   // Assignment Form State
   const [assignType, setAssignType] = useState<'User' | 'Team'>('User')
@@ -15,6 +33,9 @@ export function Page() {
   const [selectedTeam, setSelectedTeam] = useState('')
   const [replaceExisting, setReplaceExisting] = useState(false)
   const [assignError, setAssignError] = useState<string | null>(null)
+
+  // Dependency State
+  const [selectedPrereqTask, setSelectedPrereqTask] = useState('')
 
   // Checklist & Comment State
   const [newChecklistTitle, setNewChecklistTitle] = useState('')
@@ -28,10 +49,22 @@ export function Page() {
     setLookup(lkp)
     if (!selectedUser && lkp.users.length > 0) setSelectedUser(lkp.users[0].id)
     if (!selectedTeam && lkp.teams.length > 0) setSelectedTeam(lkp.teams[0].id)
+    tasksApi
+      .listTasks({ project: taskData.project })
+      .then((list) => {
+        const candidates = list.filter((t) => t.id !== taskData.id)
+        setProjectTasks(candidates)
+        if (candidates.length > 0 && !selectedPrereqTask) {
+          setSelectedPrereqTask(candidates[0].id)
+        }
+      })
+      .catch(() => {})
   }
 
   useEffect(() => {
-    refresh().finally(() => setLoading(false))
+    refresh()
+      .catch((err) => setPageError(err instanceof Error ? err.message : 'Failed to load task'))
+      .finally(() => setLoading(false))
   }, [id])
 
   async function handleAssign(e: FormEvent) {
@@ -46,6 +79,7 @@ export function Page() {
         replace_existing: replaceExisting,
       })
       await refresh()
+      setPageSuccess('Task assignment saved.')
     } catch (err) {
       setAssignError(err instanceof Error ? err.message : 'Assignment failed')
     }
@@ -53,8 +87,57 @@ export function Page() {
 
   async function handleStatusChange(newStatus: TaskDetail['status']) {
     if (!id) return
-    await tasksApi.updateTask(id, { status: newStatus })
-    await refresh()
+    setPageError(null)
+    setPageSuccess(null)
+    try {
+      await tasksApi.transitionStatus(id, newStatus)
+      await refresh()
+      setPageSuccess(`Task status updated to "${newStatus}".`)
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'Failed to transition status')
+    }
+  }
+
+  async function handleDeleteTask() {
+    if (!task) return
+    const confirmed = window.confirm(
+      `Are you sure you want to permanently delete "${task.title}"?`,
+    )
+    if (!confirmed) return
+    setPageError(null)
+    try {
+      await tasksApi.deleteTask(task.id)
+      navigate('/tasks')
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'Failed to delete task')
+    }
+  }
+
+  async function handleAddDependency(e: FormEvent) {
+    e.preventDefault()
+    if (!id || !selectedPrereqTask) return
+    setPageError(null)
+    try {
+      await tasksApi.addDependency({
+        task: id,
+        depends_on_task: selectedPrereqTask,
+        dependency_type: 'Finish-to-Start',
+      })
+      await refresh()
+      setPageSuccess('Prerequisite dependency linked.')
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'Failed to add dependency')
+    }
+  }
+
+  async function handleRemoveDependency(depId: string) {
+    setPageError(null)
+    try {
+      await tasksApi.deleteDependency(depId)
+      await refresh()
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'Failed to remove dependency')
+    }
   }
 
   async function handleAddChecklist(e: FormEvent) {
@@ -86,33 +169,49 @@ export function Page() {
     await refresh()
   }
 
-  if (loading) return <p>Loading task details...</p>
-  if (!task) return <p>Task not found.</p>
+  if (loading) return <p className="page-container">Loading task details...</p>
+  if (!task) return <p className="page-container">Task not found.</p>
 
   return (
     <div className="page-container">
       <div className="page-header">
         <div>
           <p className="eyebrow">
-            {task.project_code} · {task.is_subtask ? 'Subtask (via parent_task_id)' : 'Primary Task'}
+            {task.company_name || 'Company'} ({task.company_code || 'CO'}) ·{' '}
+            <Link to={`/projects/${task.project}`}>{task.project_code}</Link> ·{' '}
+            {task.is_subtask ? 'Subtask (via parent_task_id)' : 'Primary Task'}
           </p>
           <h1>{task.title}</h1>
-          <p>{task.description}</p>
+          <p>{task.description || 'No description provided.'}</p>
+          {task.parent_task && (
+            <p style={{ fontSize: '0.84rem', marginTop: '0.35rem' }}>
+              Parent Task:{' '}
+              <Link to={`/tasks/${task.parent_task}`}>
+                <strong>{task.parent_task_title || task.parent_task}</strong>
+              </Link>
+            </p>
+          )}
+          {task.tags && task.tags.length > 0 && (
+            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
+              {task.tags.map((tg) => (
+                <span key={tg} className="badge">
+                  #{tg}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
-        <div className="btn-row">
+        <div className="btn-row" style={{ flexWrap: 'wrap' }}>
           <select
             className="select"
             value={task.status}
             onChange={(e) => handleStatusChange(e.target.value as TaskDetail['status'])}
           >
-            <option value="Backlog">Backlog</option>
-            <option value="To Do">To Do</option>
-            <option value="Assigned">Assigned</option>
-            <option value="In Progress">In Progress</option>
-            <option value="On Hold">On Hold</option>
-            <option value="Blocked">Blocked</option>
-            <option value="In Review">In Review</option>
-            <option value="Completed">Completed</option>
+            {TASK_STATUSES.map((st) => (
+              <option key={st} value={st}>
+                {st}
+              </option>
+            ))}
           </select>
           <Link to={`/tasks/${task.id}/edit`} className="btn">
             Edit Task
@@ -125,39 +224,146 @@ export function Page() {
               + Add Subtask
             </Link>
           )}
+          <button
+            type="button"
+            className="btn"
+            style={{ color: '#991b1b', borderColor: '#fecaca' }}
+            onClick={handleDeleteTask}
+          >
+            Delete Task
+          </button>
+          <Link to="/tasks" className="btn">
+            All Tasks
+          </Link>
         </div>
       </div>
 
+      {pageError && (
+        <div
+          style={{
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            color: '#991b1b',
+            padding: '0.75rem 1rem',
+            borderRadius: '0.5rem',
+            marginBottom: '1rem',
+          }}
+        >
+          {pageError}
+        </div>
+      )}
+
+      {pageSuccess && (
+        <div
+          style={{
+            background: '#ecfdf5',
+            border: '1px solid #a7f3d0',
+            color: '#065f46',
+            padding: '0.75rem 1rem',
+            borderRadius: '0.5rem',
+            marginBottom: '1rem',
+          }}
+        >
+          {pageSuccess}
+        </div>
+      )}
+
       <div className="stats-grid">
         <div className="stat-card">
-          <div className="stat-label">Status & Priority</div>
-          <div className="stat-value" style={{ fontSize: '1.2rem' }}>
+          <div className="stat-label">Status &amp; Priority</div>
+          <div className="stat-value" style={{ fontSize: '1.15rem' }}>
             {task.status} · {task.priority}
           </div>
+          {task.is_overdue && (
+            <span className="badge badge-critical" style={{ marginTop: '0.25rem' }}>
+              Overdue
+            </span>
+          )}
         </div>
         <div className="stat-card">
           <div className="stat-label">Progress ({task.progress_method})</div>
           <div className="stat-value">{Number(task.progress).toFixed(0)}%</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Task Owner</div>
-          <div className="stat-value" style={{ fontSize: '1.2rem' }}>
-            {task.task_owner_name || 'Unassigned'}
+          <div className="stat-label">Owner &amp; Reviewer</div>
+          <div className="stat-value" style={{ fontSize: '1rem' }}>
+            Owner: {task.task_owner_name || 'Unassigned'}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+            Reviewer: {task.reviewer_name || 'None'}{' '}
+            {task.approval_required ? '(Mandatory)' : ''}
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Schedule & Effort</div>
-          <div className="stat-value" style={{ fontSize: '1.05rem' }}>
-            Due: {task.due_date || 'TBD'} ({task.estimated_effort || 0}h)
+          <div className="stat-label">Schedule &amp; Effort</div>
+          <div className="stat-value" style={{ fontSize: '1rem' }}>
+            Due: {task.due_date || 'TBD'}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+            Effort: {task.actual_effort_hours ?? 0}h actual / {task.estimated_effort || 0}h est.
+          </div>
+        </div>
+      </div>
+
+      {/* SRS §7.1 Full Task Metadata Summary Card */}
+      <div className="card" style={{ marginBottom: '1.25rem' }}>
+        <h3 style={{ marginTop: 0 }}>SRS §7.1 Task Metadata</h3>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+            gap: '0.75rem',
+            fontSize: '0.85rem',
+          }}
+        >
+          <div>
+            <strong>Task ID:</strong> <code>{task.id.slice(0, 8)}...</code>
+          </div>
+          <div>
+            <strong>Company:</strong> {task.company_name || '—'} ({task.company_code || '—'})
+          </div>
+          <div>
+            <strong>Project:</strong>{' '}
+            <Link to={`/projects/${task.project}`}>
+              {task.project_code} — {task.project_name}
+            </Link>
+          </div>
+          <div>
+            <strong>Phase:</strong> {task.phase_name || 'None'}
+          </div>
+          <div>
+            <strong>Department:</strong> {task.department_name || 'None'}
+          </div>
+          <div>
+            <strong>Team:</strong> {task.team_name || 'None'}
+          </div>
+          <div>
+            <strong>Created By:</strong> {task.created_by_name || 'System'}
+          </div>
+          <div>
+            <strong>Start Date:</strong> {task.start_date || '—'}
+          </div>
+          <div>
+            <strong>Due Date:</strong> {task.due_date || '—'}
+          </div>
+          <div>
+            <strong>Created At:</strong> {task.created_at?.slice(0, 10)}
+          </div>
+          <div>
+            <strong>Updated At:</strong> {task.updated_at?.slice(0, 10)}
+          </div>
+          <div>
+            <strong>Completed At:</strong> {task.completed_at ? task.completed_at.slice(0, 10) : '—'}
           </div>
         </div>
       </div>
 
       {/* TASK ASSIGNMENTS SECTION */}
-      <div className="card">
+      <div className="card" style={{ marginBottom: '1.25rem' }}>
         <h2>Task Assignments (`task_assignments` table)</h2>
         <p style={{ color: 'var(--muted)', marginTop: '-0.5rem', marginBottom: '1rem' }}>
-          Supports assigning individual Users or entire Teams with full reassignment audit history (`ended_at`, `status`).
+          Supports assigning individual Users or entire Teams with full reassignment audit history
+          (`ended_at`, `status`).
         </p>
 
         {assignError && <p style={{ color: '#991b1b' }}>{assignError}</p>}
@@ -292,8 +498,66 @@ export function Page() {
         </table>
       </div>
 
-      {/* SUBTASKS & CHECKLISTS */}
-      <div className="form-grid">
+      {/* PREREQUISITE DEPENDENCIES, SUBTASKS & CHECKLISTS */}
+      <div className="form-grid" style={{ marginBottom: '1.25rem' }}>
+        <div className="card">
+          <h3>Prerequisite Dependencies ({task.dependencies.length})</h3>
+          <form
+            onSubmit={handleAddDependency}
+            style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.85rem' }}
+          >
+            <select
+              className="select"
+              value={selectedPrereqTask}
+              onChange={(e) => setSelectedPrereqTask(e.target.value)}
+            >
+              <option value="">Select prerequisite task...</option>
+              {projectTasks.map((pt) => (
+                <option key={pt.id} value={pt.id}>
+                  {pt.title} ({pt.status})
+                </option>
+              ))}
+            </select>
+            <button type="submit" className="btn btn-sm btn-primary">
+              + Link Prerequisite
+            </button>
+          </form>
+
+          {task.dependencies.map((dep) => (
+            <div
+              key={dep.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '0.45rem 0',
+                borderBottom: '1px solid var(--line)',
+                fontSize: '0.85rem',
+              }}
+            >
+              <span>
+                Depends on:{' '}
+                <Link to={`/tasks/${dep.depends_on_task}`}>
+                  <strong>{dep.depends_on_title}</strong>
+                </Link>{' '}
+                <span className="badge">{dep.depends_on_status}</span>
+              </span>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => handleRemoveDependency(dep.id)}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          {task.dependencies.length === 0 && (
+            <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+              No prerequisite dependencies linked.
+            </p>
+          )}
+        </div>
+
         {!task.is_subtask && (
           <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -328,13 +592,20 @@ export function Page() {
                 </span>
               </div>
             ))}
-            {task.subtasks.length === 0 && <p style={{ color: 'var(--muted)' }}>No subtasks yet.</p>}
+            {task.subtasks.length === 0 && (
+              <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>No subtasks yet.</p>
+            )}
           </div>
         )}
+      </div>
 
+      <div className="form-grid">
         <div className="card">
           <h3>Checklists ({task.checklists.length})</h3>
-          <form onSubmit={handleAddChecklist} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+          <form
+            onSubmit={handleAddChecklist}
+            style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}
+          >
             <input
               className="input"
               placeholder="New checklist title..."
@@ -348,36 +619,48 @@ export function Page() {
 
           {task.checklists.map((cl) => (
             <div key={cl.id} style={{ marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontWeight: 600,
+                  marginBottom: '0.35rem',
+                }}
+              >
                 <span>{cl.title}</span>
                 <span>{cl.completion_percentage}%</span>
               </div>
-              <div style={{ margin: '0.5rem 0' }}>
-                {cl.items.map((item) => (
-                  <label
-                    key={item.id}
+              {cl.items.map((item) => (
+                <label
+                  key={item.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    fontSize: '0.9rem',
+                    padding: '0.25rem 0',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={item.is_completed}
+                    onChange={() => handleToggleItem(item.id)}
+                  />
+                  <span
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      padding: '0.25rem 0',
-                      cursor: 'pointer',
                       textDecoration: item.is_completed ? 'line-through' : 'none',
+                      color: item.is_completed ? 'var(--muted)' : 'inherit',
                     }}
                   >
-                    <input
-                      type="checkbox"
-                      checked={item.is_completed}
-                      onChange={() => handleToggleItem(item.id)}
-                    />
                     {item.title}
-                  </label>
-                ))}
-              </div>
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  </span>
+                </label>
+              ))}
+              <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.4rem' }}>
                 <input
                   className="input"
-                  placeholder="Add checklist item..."
+                  placeholder="Add step..."
                   value={newItemText[cl.id] || ''}
                   onChange={(e) =>
                     setNewItemText((prev) => ({ ...prev, [cl.id]: e.target.value }))
@@ -394,34 +677,41 @@ export function Page() {
             </div>
           ))}
         </div>
-      </div>
 
-      {/* COMMENTS */}
-      <div className="card">
-        <h3>Task Discussion & Comments ({task.comments.length})</h3>
-        {task.comments.map((c) => (
-          <div
-            key={c.id}
-            style={{ padding: '0.65rem 0', borderBottom: '1px solid var(--line)' }}
+        {/* COMMENTS SECTION */}
+        <div className="card">
+          <h3>Task Discussion &amp; Remarks ({task.comments.length})</h3>
+          <form
+            onSubmit={handleAddComment}
+            style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}
           >
-            <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
-              <strong>{c.author_name}</strong> · {new Date(c.created_at).toLocaleString()}
+            <input
+              className="input"
+              placeholder="Write a remark or update..."
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+            />
+            <button type="submit" className="btn btn-primary btn-sm">
+              Post
+            </button>
+          </form>
+          {task.comments.map((c) => (
+            <div
+              key={c.id}
+              style={{
+                padding: '0.6rem 0',
+                borderBottom: '1px solid var(--line)',
+                fontSize: '0.9rem',
+              }}
+            >
+              <strong>{c.author_name}</strong>{' '}
+              <span style={{ color: 'var(--muted)', fontSize: '0.78rem' }}>
+                · {new Date(c.created_at).toLocaleString()}
+              </span>
+              <div style={{ marginTop: '0.2rem' }}>{c.content}</div>
             </div>
-            <div>{c.content}</div>
-          </div>
-        ))}
-        <form onSubmit={handleAddComment} style={{ display: 'flex', gap: '0.5rem', marginTop: '0.85rem' }}>
-          <input
-            className="input"
-            style={{ flex: 1 }}
-            placeholder="Write a comment..."
-            value={commentText}
-            onChange={(e) => setCommentText(e.target.value)}
-          />
-          <button type="submit" className="btn btn-primary btn-sm">
-            Post Comment
-          </button>
-        </form>
+          ))}
+        </div>
       </div>
     </div>
   )
