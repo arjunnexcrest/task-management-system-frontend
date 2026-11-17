@@ -17,6 +17,7 @@ import { Page as ProjectListPage } from '@/modules/projects/pages/ProjectListPag
 import { Page as ProjectFormPage } from '@/modules/projects/pages/ProjectFormPage'
 import { Page as ProjectOverviewPage } from '@/modules/projects/pages/ProjectOverviewPage'
 import { Page as ProjectAssignmentPage } from '@/modules/projects/pages/ProjectAssignmentPage'
+import { Page as ProjectTeamPage } from '@/modules/projects/pages/ProjectTeamPage'
 import { Page as ProjectPlanningPage } from '@/modules/projects/pages/ProjectPlanningPage'
 import { Page as ProjectMilestonesPage } from '@/modules/projects/pages/ProjectMilestonesPage'
 import { Page as ProjectTimelinePage } from '@/modules/projects/pages/ProjectTimelinePage'
@@ -59,7 +60,7 @@ export function AppRoutes() {
         <Route path="projects/:id" element={<ProjectOverviewPage />} />
         <Route path="projects/:id/edit" element={<ProjectFormPage />} />
         <Route path="projects/:id/assignments" element={<ProjectAssignmentPage />} />
-        <Route path="projects/:id/team" element={<ProjectAssignmentPage />} />
+        <Route path="projects/:id/team" element={<ProjectTeamPage />} />
         <Route path="projects/:id/planning" element={<ProjectPlanningPage />} />
         <Route path="projects/:id/milestones" element={<ProjectMilestonesPage />} />
         <Route path="projects/:id/timeline" element={<ProjectTimelinePage />} />

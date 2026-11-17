@@ -41,6 +41,8 @@ export interface LookupData {
     status: string
     team_leader_id?: string | null
     team_leader_name?: string | null
+    active_members_count?: number
+    member_ids?: string[]
   }>
   users: Array<{
     id: string
@@ -50,6 +52,11 @@ export interface LookupData {
     employee_id: string
     designation: string | null
     account_status: string
+    company_ids?: string[]
+    department_ids?: string[]
+    department_names?: string[]
+    team_ids?: string[]
+    team_names?: string[]
   }>
 }
 
@@ -61,6 +68,10 @@ export interface ProjectMember {
   user_email: string
   user_designation?: string | null
   user_employee_id?: string
+  is_project_manager?: boolean
+  department_name?: string | null
+  team_names?: string[]
+  owned_tasks_count?: number
   role_in_project: string
   status: string
   joined_at: string
@@ -88,6 +99,8 @@ export interface ProjectTeam {
   department_name?: string
   team_leader_id?: string | null
   team_leader_name?: string | null
+  active_members_count?: number
+  participating_members_count?: number
   created_at: string
 }
 
@@ -231,6 +244,81 @@ export interface ProjectDetail extends Project {
   dashboard_summary?: ProjectDashboardSummary
 }
 
+export interface ParticipatingTeamRosterMember {
+  user_id: string
+  full_name: string
+  email: string
+  designation: string | null
+  is_leader: boolean
+  is_project_member: boolean
+  project_member_id: string | null
+  role_in_project: string | null
+  participation_status: string
+  assigned_tasks_count: number
+}
+
+export interface ParticipatingTeamDetail {
+  id: string
+  team_id: string
+  name: string
+  code: string | null
+  department_id: string
+  department_name: string
+  team_leader: {
+    id: string
+    full_name: string
+    email: string
+    designation: string | null
+  } | null
+  active_team_members_count: number
+  participating_members_count?: number
+  team_members?: ParticipatingTeamRosterMember[]
+  tasks_count: number
+  completed_tasks_count: number
+  in_progress_tasks_count?: number
+  overdue_tasks_count?: number
+  progress: number
+  created_at: string
+}
+
+export interface ProjectParticipationMember {
+  id: string
+  user: string
+  user_full_name: string
+  user_email: string
+  user_employee_id?: string
+  user_designation: string | null
+  department_id?: string | null
+  department_name?: string | null
+  teams?: Array<{
+    team_id: string
+    team_name: string
+    team_code: string | null
+    department_id: string
+    department_name: string
+    is_leader: boolean
+  }>
+  is_project_manager?: boolean
+  role_in_project: string
+  status: string
+  owned_tasks_count: number
+  assigned_tasks_count?: number
+  completed_tasks_count?: number
+  in_progress_tasks_count?: number
+  overdue_tasks_count?: number
+  estimated_effort_hours?: number
+  other_active_projects_count?: number
+  other_active_projects?: Array<{
+    project_id: string
+    code: string
+    name: string
+    status: string
+    role_in_project: string
+  }>
+  joined_at: string
+  left_at: string | null
+}
+
 export interface ProjectAssignmentHierarchy {
   project_id: string
   project_code: string
@@ -248,6 +336,13 @@ export interface ProjectAssignmentHierarchy {
     email: string
     designation: string | null
   } | null
+  summary?: {
+    participating_departments_count: number
+    participating_teams_count: number
+    active_members_count: number
+    historical_members_count: number
+    total_tasks_count: number
+  }
   participating_departments: Array<{
     id: string
     department_id: string
@@ -260,42 +355,34 @@ export interface ProjectAssignmentHierarchy {
       email: string
       designation: string | null
     } | null
-    participating_teams: Array<{
-      id: string
-      team_id: string
-      name: string
-      code: string | null
-      department_id: string
-      department_name: string
-      team_leader: {
-        id: string
-        full_name: string
-        email: string
-        designation: string | null
-      } | null
-      active_team_members_count: number
-      tasks_count: number
-      completed_tasks_count: number
-      progress: number
-      created_at: string
-    }>
+    participating_teams: ParticipatingTeamDetail[]
     tasks_count: number
     completed_tasks_count: number
     progress: number
     created_at: string
   }>
-  members: Array<{
-    id: string
-    user: string
-    user_full_name: string
-    user_email: string
-    user_designation: string | null
-    role_in_project: string
-    status: string
-    owned_tasks_count: number
-    joined_at: string
-    left_at: string | null
-  }>
+  participating_teams?: ParticipatingTeamDetail[]
+  members: ProjectParticipationMember[]
+}
+
+export interface UserProjectParticipation {
+  membership_id: string
+  project_id: string
+  project_code: string
+  project_name: string
+  project_status: string
+  project_priority: string
+  project_progress: number
+  company_id: string
+  company_name: string
+  company_code: string
+  project_manager_name: string | null
+  role_in_project: string
+  participation_status: string
+  owned_tasks_count: number
+  completed_tasks_count: number
+  joined_at: string
+  left_at: string | null
 }
 
 export interface OrganizationDepartment {
@@ -378,7 +465,7 @@ export const projectsApi = {
       method: 'POST',
     }),
 
-  // SRS §6.3 Project Assignment Workflow Endpoints
+  // SRS §6.3 Project Assignment & Participation Workflow Endpoints
   assignProjectManager: (
     id: string,
     payload: { project_manager: string | null; auto_activate?: boolean },
@@ -404,11 +491,30 @@ export const projectsApi = {
       replace?: boolean
       auto_map_departments?: boolean
       auto_add_leaders?: boolean
+      auto_add_team_members?: boolean
     },
   ) =>
     request<ProjectDetail>(`/projects/${id}/map_teams/`, {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+
+  syncProjectTeamMembers: (
+    id: string,
+    payload?: { team_id?: string; team_ids?: string[] },
+  ) =>
+    request<
+      ProjectDetail & {
+        sync_result?: {
+          synced_count: number
+          newly_added_count: number
+          reactivated_count: number
+          team_ids: string[]
+        }
+      }
+    >(`/projects/${id}/sync_team_members/`, {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
     }),
 
   assignProjectMembers: (
@@ -426,6 +532,17 @@ export const projectsApi = {
 
   getAssignmentHierarchy: (id: string) =>
     request<ProjectAssignmentHierarchy>(`/projects/${id}/assignment_hierarchy/`),
+
+  getProjectParticipation: (id: string) =>
+    request<ProjectAssignmentHierarchy>(`/projects/${id}/participation/`),
+
+  getUserParticipations: (userId: string, companyId?: string) => {
+    const params = new URLSearchParams({ user: userId })
+    if (companyId) params.set('company', companyId)
+    return request<UserProjectParticipation[]>(
+      `/projects/user_participations/?${params.toString()}`,
+    )
+  },
 
   listPhases: async (projectId?: string) => {
     const query = projectId ? `?project=${projectId}` : ''
@@ -469,6 +586,21 @@ export const projectsApi = {
     request<ProjectMember>('/projects/members/', {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+
+  updateProjectMember: (
+    memberRecordId: string,
+    payload: { role_in_project?: string; status?: string },
+  ) =>
+    request<ProjectMember>(`/projects/members/${memberRecordId}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  reactivateProjectMember: (memberRecordId: string, roleInProject?: string) =>
+    request<ProjectMember>(`/projects/members/${memberRecordId}/reactivate/`, {
+      method: 'POST',
+      body: JSON.stringify(roleInProject ? { role_in_project: roleInProject } : {}),
     }),
 
   removeProjectMember: (memberRecordId: string) =>

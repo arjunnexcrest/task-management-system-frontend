@@ -115,10 +115,14 @@ export interface TaskComment {
 
 export interface Task {
   id: string
+  company_id?: string
+  company_name?: string
+  company_code?: string
   project: string
   project_name: string
   project_code: string
   parent_task: string | null
+  parent_task_title?: string | null
   is_subtask: boolean
   phase: string | null
   phase_name: string | null
@@ -150,13 +154,21 @@ export interface Task {
   start_date: string | null
   due_date: string | null
   estimated_effort: string | number | null
+  actual_effort_hours?: number
   progress: string | number
   progress_method: 'Manual' | 'Subtasks' | 'Checklist'
   approval_required: boolean
   is_overdue: boolean
+  days_remaining?: number | null
+  due_status?: 'Overdue' | 'Due Today' | 'Due Soon' | 'On Track' | 'Completed' | 'No Due Date'
   subtasks_count: number
   active_assignments: ActiveAssignmentSummary[]
   tags: string[]
+  assignee_user_ids?: string[]
+  assignee_team_ids?: string[]
+  tag_names?: string[]
+  dependency_task_ids?: string[]
+  initial_checklist_items?: string[]
   created_at: string
   updated_at: string
   completed_at: string | null
@@ -196,6 +208,12 @@ export const tasksApi = {
       method: 'DELETE',
     }),
 
+  transitionStatus: (taskId: string, status: Task['status']) =>
+    request<TaskDetail>(`/tasks/${taskId}/transition-status/`, {
+      method: 'POST',
+      body: JSON.stringify({ status }),
+    }),
+
   assignTask: (
     taskId: string,
     payload: {
@@ -204,9 +222,45 @@ export const tasksApi = {
       team?: string | null
       assigned_by?: string
       replace_existing?: boolean
+      task_owner?: string | null
+      reviewer?: string | null
+      entire_team_responsible?: boolean
     },
   ) =>
     request<TaskAssignment>(`/tasks/${taskId}/assign/`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  bulkAssignTasks: (payload: {
+    task_ids: string[]
+    user?: string | null
+    assignee_user_ids?: string[]
+    team?: string | null
+    assignee_team_ids?: string[]
+    task_owner?: string | null
+    reviewer?: string | null
+    priority?: Task['priority'] | ''
+    due_date?: string | null
+    start_date?: string | null
+    replace_existing?: boolean
+  }) =>
+    request<{ updated_count: number; tasks: Task[] }>('/tasks/bulk_assign/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  rescheduleTask: (
+    taskId: string,
+    payload: {
+      start_date?: string | null
+      due_date?: string | null
+      estimated_effort?: number | string | null
+      priority?: Task['priority']
+      reason?: string
+    },
+  ) =>
+    request<TaskDetail>(`/tasks/${taskId}/reschedule/`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
@@ -220,6 +274,21 @@ export const tasksApi = {
     request<TaskAssignment>(`/tasks/assignments/${assignmentId}/end/`, {
       method: 'POST',
       body: JSON.stringify({ status }),
+    }),
+
+  addDependency: (payload: {
+    task: string
+    depends_on_task: string
+    dependency_type?: TaskDependency['dependency_type']
+  }) =>
+    request<TaskDependency>('/tasks/dependencies/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteDependency: (dependencyId: string) =>
+    request<void>(`/tasks/dependencies/${dependencyId}/`, {
+      method: 'DELETE',
     }),
 
   createChecklist: (payload: { task: string; title: string; sort_order?: number }) =>

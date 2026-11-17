@@ -21,6 +21,7 @@ export function Page() {
   const [statusFilter, setStatusFilter] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('')
   const [departmentFilter, setDepartmentFilter] = useState('')
+  const [memberFilter, setMemberFilter] = useState('')
 
   useEffect(() => {
     projectsApi.getLookup().then(setLookup).catch(() => {})
@@ -28,7 +29,7 @@ export function Page() {
 
   useEffect(() => {
     loadProjects()
-  }, [companyFilter, statusFilter, priorityFilter, departmentFilter])
+  }, [companyFilter, statusFilter, priorityFilter, departmentFilter, memberFilter])
 
   async function loadProjects() {
     try {
@@ -38,6 +39,7 @@ export function Page() {
       if (statusFilter) params.status = statusFilter
       if (priorityFilter) params.priority = priorityFilter
       if (departmentFilter) params.department = departmentFilter
+      if (memberFilter) params.participating_user = memberFilter
       if (search.trim()) params.search = search.trim()
       const data = await projectsApi.listProjects(params)
       setProjects(data)
@@ -184,6 +186,18 @@ export function Page() {
                 </option>
               ))}
           </select>
+          <select
+            className="select"
+            value={memberFilter}
+            onChange={(e) => setMemberFilter(e.target.value)}
+          >
+            <option value="">All Participating Members</option>
+            {lookup?.users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.full_name} ({u.designation || u.email})
+              </option>
+            ))}
+          </select>
           <button className="btn" onClick={loadProjects}>
             Search
           </button>
@@ -272,6 +286,9 @@ export function Page() {
                     <div className="btn-row" style={{ flexWrap: 'wrap', gap: '0.35rem' }}>
                       <Link to={`/projects/${p.id}`} className="btn btn-sm">
                         View
+                      </Link>
+                      <Link to={`/projects/${p.id}/team`} className="btn btn-sm">
+                        Team &amp; Members
                       </Link>
                       <Link to={`/projects/${p.id}/assignments`} className="btn btn-sm">
                         PM &amp; Depts
