@@ -290,7 +290,7 @@ export function Page() {
               color: '#991b1b',
               padding: '0.75rem 1rem',
               borderRadius: '0.5rem',
-              marginBottom: '1rem',
+              marginBottom: '1.25rem',
             }}
           >
             {error}
@@ -298,9 +298,7 @@ export function Page() {
         )}
 
         {/* Section 1: Hierarchy & Classification */}
-        <h3 style={{ marginTop: 0, marginBottom: '0.75rem' }}>
-          1. Project Context, Hierarchy &amp; Core Identification
-        </h3>
+        <h3>1. Project Context, Hierarchy &amp; Core Identification</h3>
         <div className="form-grid">
           <div className="form-field">
             <label>Company</label>
@@ -347,7 +345,7 @@ export function Page() {
           </div>
 
           <div className="form-field">
-            <label>Parent Task (Leave blank for Top-Level Task)</label>
+            <label>Parent Task (Blank for Top-Level Task)</label>
             <select
               className="select"
               value={parentTask}
@@ -363,7 +361,7 @@ export function Page() {
           </div>
 
           <div className="form-field">
-            <label>Project Phase (SRS §15.3)</label>
+            <label>Project Phase</label>
             <select className="select" value={phase} onChange={(e) => setPhase(e.target.value)}>
               <option value="">None</option>
               {phases.map((ph) => (
@@ -397,12 +395,10 @@ export function Page() {
           </div>
         </div>
 
-        <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: '1.25rem 0' }} />
+        <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: '1.5rem 0' }} />
 
         {/* Section 2: Ownership, Department, Team & Review */}
-        <h3 style={{ marginTop: 0, marginBottom: '0.75rem' }}>
-          2. Organization Scope, Accountable Owner &amp; Review Rules
-        </h3>
+        <h3>2. Organization Scope, Accountable Owner &amp; Review Rules</h3>
         <div className="form-grid">
           <div className="form-field">
             <label>Responsible Department</label>
@@ -436,13 +432,13 @@ export function Page() {
           </div>
 
           <div className="form-field">
-            <label>Task Owner (Primary Accountable Person — SRS §1.4 #3)</label>
+            <label>Task Owner (Primary Accountable Person)</label>
             <select
               className="select"
               value={taskOwner}
               onChange={(e) => setTaskOwner(e.target.value)}
             >
-              <option value="">Auto-assign from first Assignee / Unassigned</option>
+              <option value="">Auto-assign from first Assignee</option>
               {companyUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.full_name} ({u.designation || u.email})
@@ -452,7 +448,7 @@ export function Page() {
           </div>
 
           <div className="form-field">
-            <label>Reviewer (SRS §7.1 &amp; §14.1)</label>
+            <label>Reviewer</label>
             <select
               className="select"
               value={reviewer}
@@ -472,9 +468,10 @@ export function Page() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.5rem',
+                gap: '0.6rem',
                 cursor: 'pointer',
                 fontWeight: 500,
+                padding: '0.35rem 0',
               }}
             >
               <input
@@ -490,49 +487,29 @@ export function Page() {
           </div>
         </div>
 
-        <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: '1.25rem 0' }} />
+        <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: '1.5rem 0' }} />
 
         {/* Section 3: Multiple Assignees (Users & Teams) */}
-        <h3 style={{ marginTop: 0, marginBottom: '0.75rem' }}>
-          3. Assignees (Individual Employees &amp; Teams — SRS §7.2)
-        </h3>
+        <h3>3. Assignees (Individual Employees &amp; Teams)</h3>
         <div className="form-grid">
           <div className="form-field">
             <label>Assigned Employees ({assigneeUserIds.length} selected)</label>
-            <div
-              style={{
-                border: '1px solid var(--line)',
-                borderRadius: '0.5rem',
-                padding: '0.65rem',
-                maxHeight: '155px',
-                overflowY: 'auto',
-                background: '#f8fafc',
-              }}
-            >
+            <div className="check-list-box">
               {companyUsers.map((u) => (
-                <label
-                  key={u.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.28rem 0',
-                    borderBottom: '1px solid var(--line)',
-                    cursor: 'pointer',
-                    fontWeight: 400,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={assigneeUserIds.includes(u.id)}
-                    onChange={() =>
-                      toggleSelection(assigneeUserIds, setAssigneeUserIds, u.id)
-                    }
-                  />
-                  <span>
-                    <strong>{u.full_name}</strong>{' '}
-                    <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
-                      ({u.designation || u.email})
+                <label key={u.id} className="check-row">
+                  <span className="check-row-left">
+                    <input
+                      type="checkbox"
+                      checked={assigneeUserIds.includes(u.id)}
+                      onChange={() =>
+                        toggleSelection(assigneeUserIds, setAssigneeUserIds, u.id)
+                      }
+                    />
+                    <span>
+                      <strong>{u.full_name}</strong>{' '}
+                      <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
+                        ({u.designation || u.email})
+                      </span>
                     </span>
                   </span>
                 </label>
@@ -542,40 +519,22 @@ export function Page() {
 
           <div className="form-field">
             <label>Assigned Teams ({assigneeTeamIds.length} selected)</label>
-            <div
-              style={{
-                border: '1px solid var(--line)',
-                borderRadius: '0.5rem',
-                padding: '0.65rem',
-                maxHeight: '155px',
-                overflowY: 'auto',
-                background: '#f8fafc',
-              }}
-            >
+            <div className="check-list-box">
               {companyTeams.map((tm) => (
-                <label
-                  key={tm.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.28rem 0',
-                    borderBottom: '1px solid var(--line)',
-                    cursor: 'pointer',
-                    fontWeight: 400,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={assigneeTeamIds.includes(tm.id)}
-                    onChange={() =>
-                      toggleSelection(assigneeTeamIds, setAssigneeTeamIds, tm.id)
-                    }
-                  />
-                  <span>
-                    <strong>{tm.name}</strong>{' '}
-                    <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
-                      ({tm.department_name || tm.code})
+                <label key={tm.id} className="check-row">
+                  <span className="check-row-left">
+                    <input
+                      type="checkbox"
+                      checked={assigneeTeamIds.includes(tm.id)}
+                      onChange={() =>
+                        toggleSelection(assigneeTeamIds, setAssigneeTeamIds, tm.id)
+                      }
+                    />
+                    <span>
+                      <strong>{tm.name}</strong>{' '}
+                      <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
+                        ({tm.department_name || tm.code})
+                      </span>
                     </span>
                   </span>
                 </label>
@@ -584,15 +543,13 @@ export function Page() {
           </div>
         </div>
 
-        <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: '1.25rem 0' }} />
+        <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: '1.5rem 0' }} />
 
         {/* Section 4: Priority, Status, Schedule, Effort & Progress */}
-        <h3 style={{ marginTop: 0, marginBottom: '0.75rem' }}>
-          4. Priority, Workflow Status, Schedule &amp; Progress Calculation
-        </h3>
+        <h3>4. Priority, Workflow Status, Schedule &amp; Progress Calculation</h3>
         <div className="form-grid">
           <div className="form-field">
-            <label>Priority (SRS §7.4)</label>
+            <label>Priority</label>
             <select
               className="select"
               value={priority}
@@ -606,7 +563,7 @@ export function Page() {
           </div>
 
           <div className="form-field">
-            <label>Status (SRS §7.3 — 11 Default Statuses)</label>
+            <label>Status</label>
             <select
               className="select"
               value={status}
@@ -654,7 +611,7 @@ export function Page() {
           </div>
 
           <div className="form-field">
-            <label>Progress Calculation Method (SRS §7.6)</label>
+            <label>Progress Calculation Method</label>
             <select
               className="select"
               value={progressMethod}
@@ -682,15 +639,13 @@ export function Page() {
           )}
         </div>
 
-        <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: '1.25rem 0' }} />
+        <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: '1.5rem 0' }} />
 
         {/* Section 5: Tags, Dependencies & Initial Checklist */}
-        <h3 style={{ marginTop: 0, marginBottom: '0.75rem' }}>
-          5. Classification Tags, Prerequisite Dependencies &amp; Checklist
-        </h3>
+        <h3>5. Classification Tags, Prerequisite Dependencies &amp; Checklist</h3>
         <div className="form-grid">
           <div className="form-field">
-            <label>Classification Tags (Comma-separated — SRS §7.1)</label>
+            <label>Classification Tags (Comma-separated)</label>
             <input
               className="input"
               placeholder="e.g. backend, api, security, sprint-1"
@@ -700,49 +655,29 @@ export function Page() {
           </div>
 
           <div className="form-field">
-            <label>
-              Prerequisite Task Dependencies ({dependencyTaskIds.length} selected — SRS §7.9)
-            </label>
-            <div
-              style={{
-                border: '1px solid var(--line)',
-                borderRadius: '0.5rem',
-                padding: '0.65rem',
-                maxHeight: '140px',
-                overflowY: 'auto',
-                background: '#f8fafc',
-              }}
-            >
+            <label>Prerequisite Task Dependencies ({dependencyTaskIds.length} selected)</label>
+            <div className="check-list-box">
               {projectTasks.map((pt) => (
-                <label
-                  key={pt.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.25rem 0',
-                    borderBottom: '1px solid var(--line)',
-                    cursor: 'pointer',
-                    fontWeight: 400,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={dependencyTaskIds.includes(pt.id)}
-                    onChange={() =>
-                      toggleSelection(dependencyTaskIds, setDependencyTaskIds, pt.id)
-                    }
-                  />
-                  <span>
-                    <strong>{pt.title}</strong>{' '}
-                    <span style={{ fontSize: '0.76rem', color: 'var(--muted)' }}>
-                      ({pt.status})
+                <label key={pt.id} className="check-row">
+                  <span className="check-row-left">
+                    <input
+                      type="checkbox"
+                      checked={dependencyTaskIds.includes(pt.id)}
+                      onChange={() =>
+                        toggleSelection(dependencyTaskIds, setDependencyTaskIds, pt.id)
+                      }
+                    />
+                    <span>
+                      <strong>{pt.title}</strong>{' '}
+                      <span style={{ fontSize: '0.76rem', color: 'var(--muted)' }}>
+                        ({pt.status})
+                      </span>
                     </span>
                   </span>
                 </label>
               ))}
               {projectTasks.length === 0 && (
-                <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--muted)', padding: '0.25rem 0' }}>
                   No other tasks in this project yet.
                 </span>
               )}
@@ -751,7 +686,7 @@ export function Page() {
 
           {!isEdit && (
             <div className="form-field" style={{ gridColumn: '1 / -1' }}>
-              <label>Initial Checklist Steps (One step per line — SRS §8.4)</label>
+              <label>Initial Checklist Steps (One step per line)</label>
               <textarea
                 className="textarea"
                 rows={3}
@@ -763,7 +698,7 @@ export function Page() {
           )}
         </div>
 
-        <div className="btn-row" style={{ marginTop: '1.25rem' }}>
+        <div className="btn-row" style={{ marginTop: '1.5rem' }}>
           <button type="submit" className="btn btn-primary" disabled={submitting}>
             {submitting
               ? 'Saving Task...'
