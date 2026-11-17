@@ -159,6 +159,8 @@ export interface Task {
   progress_method: 'Manual' | 'Subtasks' | 'Checklist'
   approval_required: boolean
   is_overdue: boolean
+  days_remaining?: number | null
+  due_status?: 'Overdue' | 'Due Today' | 'Due Soon' | 'On Track' | 'Completed' | 'No Due Date'
   subtasks_count: number
   active_assignments: ActiveAssignmentSummary[]
   tags: string[]
@@ -220,9 +222,45 @@ export const tasksApi = {
       team?: string | null
       assigned_by?: string
       replace_existing?: boolean
+      task_owner?: string | null
+      reviewer?: string | null
+      entire_team_responsible?: boolean
     },
   ) =>
     request<TaskAssignment>(`/tasks/${taskId}/assign/`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  bulkAssignTasks: (payload: {
+    task_ids: string[]
+    user?: string | null
+    assignee_user_ids?: string[]
+    team?: string | null
+    assignee_team_ids?: string[]
+    task_owner?: string | null
+    reviewer?: string | null
+    priority?: Task['priority'] | ''
+    due_date?: string | null
+    start_date?: string | null
+    replace_existing?: boolean
+  }) =>
+    request<{ updated_count: number; tasks: Task[] }>('/tasks/bulk_assign/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  rescheduleTask: (
+    taskId: string,
+    payload: {
+      start_date?: string | null
+      due_date?: string | null
+      estimated_effort?: number | string | null
+      priority?: Task['priority']
+      reason?: string
+    },
+  ) =>
+    request<TaskDetail>(`/tasks/${taskId}/reschedule/`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),

@@ -32,7 +32,16 @@ export function Page() {
   const [selectedUser, setSelectedUser] = useState('')
   const [selectedTeam, setSelectedTeam] = useState('')
   const [replaceExisting, setReplaceExisting] = useState(false)
+  const [entireTeamResponsible, setEntireTeamResponsible] = useState(false)
   const [assignError, setAssignError] = useState<string | null>(null)
+
+  // Schedule & Priority Reschedule State (SRS §7.4 & §7.10)
+  const [schedPriority, setSchedPriority] = useState<Task['priority']>('Medium')
+  const [schedStartDate, setSchedStartDate] = useState('')
+  const [schedDueDate, setSchedDueDate] = useState('')
+  const [schedEffort, setSchedEffort] = useState('')
+  const [schedReason, setSchedReason] = useState('')
+  const [schedSaving, setSchedSaving] = useState(false)
 
   // Dependency State
   const [selectedPrereqTask, setSelectedPrereqTask] = useState('')
@@ -47,6 +56,10 @@ export function Page() {
     const [taskData, lkp] = await Promise.all([tasksApi.getTask(id), projectsApi.getLookup()])
     setTask(taskData)
     setLookup(lkp)
+    setSchedPriority(taskData.priority)
+    setSchedStartDate(taskData.start_date || '')
+    setSchedDueDate(taskData.due_date || '')
+    setSchedEffort(taskData.estimated_effort ? String(taskData.estimated_effort) : '')
     if (!selectedUser && lkp.users.length > 0) setSelectedUser(lkp.users[0].id)
     if (!selectedTeam && lkp.teams.length > 0) setSelectedTeam(lkp.teams[0].id)
     tasksApi
@@ -77,11 +90,36 @@ export function Page() {
         user: assignType === 'User' ? selectedUser : null,
         team: assignType === 'Team' ? selectedTeam : null,
         replace_existing: replaceExisting,
+        entire_team_responsible: assignType === 'Team' ? entireTeamResponsible : false,
       })
       await refresh()
       setPageSuccess('Task assignment saved.')
     } catch (err) {
       setAssignError(err instanceof Error ? err.message : 'Assignment failed')
+    }
+  }
+
+  async function handleReschedule(e: FormEvent) {
+    e.preventDefault()
+    if (!id) return
+    setSchedSaving(true)
+    setPageError(null)
+    setPageSuccess(null)
+    try {
+      await tasksApi.rescheduleTask(id, {
+        priority: schedPriority,
+        start_date: schedStartDate || null,
+        due_date: schedDueDate || null,
+        estimated_effort: schedEffort ? Number(schedEffort) : null,
+        reason: schedReason.trim() || undefined,
+      })
+      setSchedReason('')
+      await refresh()
+      setPageSuccess('Priority and due date schedule updated with audit comment.')
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'Failed to update schedule & priority')
+    } finally {
+      setSchedSaving(false)
     }
   }
 
@@ -358,6 +396,85 @@ export function Page() {
         </div>
       </div>
 
+      {/* PRIORITY & DUE DATE SCHEDULE MANAGEMENT CARD (SRS §7.4 & §7.10) */}
+      <form className="card" onSubmit={handleReschedule} style={{ marginBottom: '1.25rem' }}>
+        <h3>Priority &amp; Due Date Management (SRS §7.4 &amp; §7.10)</h3>
+        <div className="form-grid">
+          <div className="form-field">
+            <label>Priority</label>
+            <select
+              className="select"
+              value={schedPriority}
+              onChange={(e) => setSchedPriority(e.target.value as Task['priority'])}
+            >
+              <option value="Critical">Critical</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
+          </div>
+          <div className="form-field">
+            <label>Estimated Effort (Hours)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              className="input"
+              value={schedEffort}
+              onChange={(e) => setSchedEffort(e.target.value)}
+            />
+          </div>
+          <div className="form-field">
+            <label>Start Date</label>
+            <input
+              type="date"
+              className="input"
+              value={schedStartDate}
+              onChange={(e) => setSchedStartDate(e.target.value)}
+            />
+          </div>
+          <div className="form-field">
+            <label>Due Date</label>
+            <input
+              type="date"
+              className="input"
+              value={schedDueDate}
+              onChange={(e) => setSchedDueDate(e.target.value)}
+            />
+          </div>
+          <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+            <label>Schedule / Priority Change Reason (Optional audit note)</label>
+            <input
+              className="input"
+              placeholder="e.g. Reprioritized for sprint milestone or extended due date after review..."
+              value={schedReason}
+              onChange={(e) => setSchedReason(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="btn-row" style={{ marginTop: '1rem' }}>
+          <button type="submit" className="btn btn-primary btn-sm" disabled={schedSaving}>
+            {schedSaving ? 'Updating...' : 'Update Priority & Due Date'}
+          </button>
+          {task.due_status && (
+            <span
+              className={
+                task.is_overdue
+                  ? 'badge badge-critical'
+                  : task.due_status === 'Due Today'
+                    ? 'badge badge-medium'
+                    : 'badge badge-active'
+              }
+            >
+              {task.due_status}
+              {task.days_remaining !== null && task.days_remaining !== undefined
+                ? ` (${task.days_remaining >= 0 ? `${task.days_remaining}d left` : `${Math.abs(task.days_remaining)}d overdue`})`
+                : ''}
+            </span>
+          )}
+        </div>
+      </form>
+
       {/* TASK ASSIGNMENTS SECTION */}
       <div className="card" style={{ marginBottom: '1.25rem' }}>
         <h2>Task Assignments (`task_assignments` table)</h2>
@@ -424,6 +541,17 @@ export function Page() {
             />
             Reassign (end current active assignments)
           </label>
+
+          {assignType === 'Team' && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.86rem' }}>
+              <input
+                type="checkbox"
+                checked={entireTeamResponsible}
+                onChange={(e) => setEntireTeamResponsible(e.target.checked)}
+              />
+              Entire team responsible (leave individual owner optional)
+            </label>
+          )}
 
           <button type="submit" className="btn btn-primary btn-sm">
             + Assign {assignType}

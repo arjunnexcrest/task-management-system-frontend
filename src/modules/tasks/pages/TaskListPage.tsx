@@ -47,6 +47,16 @@ export function Page() {
   const [subtaskFilter, setSubtaskFilter] = useState<'ALL' | 'TOP' | 'SUB'>('ALL')
   const [overdueOnly, setOverdueOnly] = useState(false)
 
+  // SRS §7.2, §7.4 & §7.10 Bulk Assignment, Priority & Due Dates
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([])
+  const [bulkUser, setBulkUser] = useState('')
+  const [bulkTeam, setBulkTeam] = useState('')
+  const [bulkPriority, setBulkPriority] = useState<Task['priority'] | ''>('')
+  const [bulkDueDate, setBulkDueDate] = useState('')
+  const [bulkReplaceExisting, setBulkReplaceExisting] = useState(false)
+  const [bulkSuccess, setBulkSuccess] = useState<string | null>(null)
+  const [bulkSaving, setBulkSaving] = useState(false)
+
   useEffect(() => {
     Promise.all([projectsApi.getLookup(), projectsApi.listProjects()])
       .then(([lkp, projs]) => {
@@ -104,9 +114,56 @@ export function Page() {
     setError(null)
     try {
       await tasksApi.deleteTask(task.id)
+      setSelectedTaskIds((prev) => prev.filter((id) => id !== task.id))
       await loadTasks()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete task')
+    }
+  }
+
+  function toggleTaskSelection(taskId: string) {
+    setSelectedTaskIds((prev) =>
+      prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId],
+    )
+  }
+
+  function toggleSelectAllVisible() {
+    if (selectedTaskIds.length === tasks.length && tasks.length > 0) {
+      setSelectedTaskIds([])
+    } else {
+      setSelectedTaskIds(tasks.map((t) => t.id))
+    }
+  }
+
+  async function handleBulkApply() {
+    if (selectedTaskIds.length === 0) return
+    if (!bulkUser && !bulkTeam && !bulkPriority && !bulkDueDate) {
+      setError('Choose at least one field (User, Team, Priority, or Due Date) to apply in bulk.')
+      return
+    }
+    setBulkSaving(true)
+    setError(null)
+    setBulkSuccess(null)
+    try {
+      const res = await tasksApi.bulkAssignTasks({
+        task_ids: selectedTaskIds,
+        user: bulkUser || undefined,
+        team: bulkTeam || undefined,
+        priority: bulkPriority || undefined,
+        due_date: bulkDueDate || undefined,
+        replace_existing: bulkReplaceExisting,
+      })
+      setBulkSuccess(`Updated ${res.updated_count} task(s) successfully.`)
+      setSelectedTaskIds([])
+      setBulkUser('')
+      setBulkTeam('')
+      setBulkPriority('')
+      setBulkDueDate('')
+      await loadTasks()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Bulk assignment failed')
+    } finally {
+      setBulkSaving(false)
     }
   }
 
@@ -294,6 +351,118 @@ export function Page() {
         </div>
 
         {error && <p style={{ color: '#991b1b', marginBottom: '0.75rem' }}>{error}</p>}
+        {bulkSuccess && (
+          <div
+            style={{
+              background: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              color: '#065f46',
+              padding: '0.65rem 1rem',
+              borderRadius: '0.5rem',
+              marginBottom: '0.75rem',
+              fontSize: '0.86rem',
+            }}
+          >
+            {bulkSuccess}
+          </div>
+        )}
+
+        {selectedTaskIds.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.6rem',
+              alignItems: 'center',
+              padding: '0.85rem 1rem',
+              marginBottom: '1rem',
+              borderRadius: '0.55rem',
+              background: '#f8fafc',
+              border: '1px solid var(--line-strong)',
+            }}
+          >
+            <strong style={{ fontSize: '0.85rem' }}>
+              Bulk Action ({selectedTaskIds.length} selected):
+            </strong>
+            <select
+              className="select"
+              style={{ width: 'auto', minWidth: '165px' }}
+              value={bulkUser}
+              onChange={(e) => setBulkUser(e.target.value)}
+            >
+              <option value="">Assign User...</option>
+              {lookup?.users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  👤 {u.full_name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="select"
+              style={{ width: 'auto', minWidth: '155px' }}
+              value={bulkTeam}
+              onChange={(e) => setBulkTeam(e.target.value)}
+            >
+              <option value="">Assign Team...</option>
+              {lookup?.teams.map((tm) => (
+                <option key={tm.id} value={tm.id}>
+                  👥 {tm.name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="select"
+              style={{ width: 'auto', minWidth: '135px' }}
+              value={bulkPriority}
+              onChange={(e) => setBulkPriority(e.target.value as Task['priority'] | '')}
+            >
+              <option value="">Set Priority...</option>
+              <option value="Critical">Critical</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
+            <input
+              type="date"
+              className="input"
+              style={{ width: 'auto' }}
+              title="Set Due Date"
+              value={bulkDueDate}
+              onChange={(e) => setBulkDueDate(e.target.value)}
+            />
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={bulkReplaceExisting}
+                onChange={(e) => setBulkReplaceExisting(e.target.checked)}
+              />
+              <span>Reassign (end prior)</span>
+            </label>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={bulkSaving}
+              onClick={handleBulkApply}
+            >
+              {bulkSaving ? 'Applying...' : 'Apply Bulk Update'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setSelectedTaskIds([])}
+            >
+              Clear
+            </button>
+          </div>
+        )}
 
         {loading ? (
           <p>Loading tasks from PostgreSQL...</p>
@@ -301,6 +470,14 @@ export function Page() {
           <table className="data-table">
             <thead>
               <tr>
+                <th style={{ width: '36px' }}>
+                  <input
+                    type="checkbox"
+                    checked={tasks.length > 0 && selectedTaskIds.length === tasks.length}
+                    onChange={toggleSelectAllVisible}
+                    title="Select all visible tasks"
+                  />
+                </th>
                 <th>Title, Hierarchy &amp; Tags</th>
                 <th>Project &amp; Org</th>
                 <th>Status &amp; Priority</th>
@@ -314,6 +491,13 @@ export function Page() {
             <tbody>
               {tasks.map((t) => (
                 <tr key={t.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={selectedTaskIds.includes(t.id)}
+                      onChange={() => toggleTaskSelection(t.id)}
+                    />
+                  </td>
                   <td>
                     <Link to={`/tasks/${t.id}`} style={{ color: 'var(--accent)', fontWeight: 600 }}>
                       {t.is_subtask ? `↳ [Subtask] ${t.title}` : t.title}
@@ -401,11 +585,19 @@ export function Page() {
                   </td>
                   <td style={{ fontSize: '0.82rem' }}>
                     <div>{t.due_date || '—'}</div>
-                    {t.is_overdue && (
+                    {t.is_overdue ? (
                       <span className="badge badge-critical" style={{ fontSize: '0.7rem' }}>
-                        Overdue
+                        Overdue ({Math.abs(t.days_remaining || 0)}d)
                       </span>
-                    )}
+                    ) : t.due_status === 'Due Today' ? (
+                      <span className="badge badge-medium" style={{ fontSize: '0.7rem' }}>
+                        Due Today
+                      </span>
+                    ) : t.due_status === 'Due Soon' ? (
+                      <span className="badge badge-high" style={{ fontSize: '0.7rem' }}>
+                        Due in {t.days_remaining}d
+                      </span>
+                    ) : null}
                   </td>
                   <td>
                     <div className="btn-row" style={{ flexWrap: 'wrap', gap: '0.3rem' }}>
@@ -437,7 +629,7 @@ export function Page() {
               ))}
               {tasks.length === 0 && (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)' }}>
+                  <td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)' }}>
                     No tasks match the current search/filter criteria.
                   </td>
                 </tr>
