@@ -3,22 +3,24 @@ import { env } from '@/config/env'
 
 const navItems = [
   { to: '/', label: 'Home' },
-  { to: '/login', label: 'Login' },
-  { to: '/dashboards/ceo', label: 'CEO Dashboard' },
-  { to: '/companies', label: 'Companies' },
-  { to: '/organization', label: 'Organization' },
   { to: '/projects', label: 'Projects' },
   { to: '/tasks', label: 'Tasks & Subtasks' },
   { to: '/tasks/mine', label: 'My Assignments' },
   { to: '/kanban', label: 'Kanban Board' },
   { to: '/calendar', label: 'Task Calendar' },
   { to: '/workload', label: 'Workload View' },
+  { to: '/departments', label: 'Departments' },
+  { to: '/teams', label: 'Teams' },
+  { to: '/dashboards/ceo', label: 'CEO Dashboard' },
+  { to: '/companies', label: 'Companies' },
+  { to: '/organization', label: 'Organization' },
   { to: '/tracking', label: 'Time Tracking' },
   { to: '/reviews', label: 'Reviews' },
   { to: '/notifications', label: 'Notifications' },
   { to: '/reports', label: 'Reports' },
   { to: '/risks', label: 'Risks' },
   { to: '/settings', label: 'Settings' },
+  { to: '/login', label: 'Login' },
 ]
 
 export function AppShell() {
@@ -27,7 +29,7 @@ export function AppShell() {
       <aside className="sidebar">
         <div className="brand">
           <strong>{env.appName}</strong>
-          <span>React starter</span>
+          <span>Enterprise Project &amp; Task Suite</span>
         </div>
         <nav>
           {navItems.map((item) => (
