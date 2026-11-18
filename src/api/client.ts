@@ -1,5 +1,21 @@
 import { env } from '@/config/env'
 
+const ACCESS_KEY = 'tms_access'
+const REFRESH_KEY = 'tms_refresh'
+
+export const tokenStorage = {
+  getAccess: (): string | null => localStorage.getItem(ACCESS_KEY),
+  getRefresh: (): string | null => localStorage.getItem(REFRESH_KEY),
+  set: (access: string, refresh: string) => {
+    localStorage.setItem(ACCESS_KEY, access)
+    localStorage.setItem(REFRESH_KEY, refresh)
+  },
+  clear: () => {
+    localStorage.removeItem(ACCESS_KEY)
+    localStorage.removeItem(REFRESH_KEY)
+  },
+}
+
 export class ApiError extends Error {
   status: number
   body: unknown
@@ -17,11 +33,7 @@ type RequestOptions = Omit<RequestInit, 'body'> & {
   token?: string | null
 }
 
-/**
- * Thin fetch wrapper for the Django REST API.
- * Endpoint helpers will be added by module owners under src/modules/<name>/api.
- */
-export async function apiRequest<T>(
+async function rawRequest<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
@@ -42,7 +54,14 @@ export async function apiRequest<T>(
   })
 
   const text = await response.text()
-  const data = text ? JSON.parse(text) : null
+  let data: unknown = null
+  if (text && !text.trim().startsWith('<')) {
+    try {
+      data = JSON.parse(text)
+    } catch {
+      data = { detail: text }
+    }
+  }
 
   if (!response.ok) {
     throw new ApiError(
@@ -53,4 +72,52 @@ export async function apiRequest<T>(
   }
 
   return data as T
+}
+
+let refreshPromise: Promise<string> | null = null
+
+async function refreshAccessToken(): Promise<string> {
+  const refresh = tokenStorage.getRefresh()
+  if (!refresh) throw new ApiError('No refresh token', 401, null)
+
+  const data = await rawRequest<{ access: string; refresh: string }>(
+    'api/auth/refresh/',
+    { method: 'POST', body: { refresh } },
+  )
+  tokenStorage.set(data.access, data.refresh)
+  return data.access
+}
+
+export async function apiRequest<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  if (options.token !== undefined) {
+    return rawRequest<T>(path, options)
+  }
+
+  const access = tokenStorage.getAccess()
+  try {
+    return await rawRequest<T>(path, { ...options, token: access })
+  } catch (err) {
+    if (
+      err instanceof ApiError &&
+      err.status === 401 &&
+      tokenStorage.getRefresh()
+    ) {
+      if (!refreshPromise) {
+        refreshPromise = refreshAccessToken().finally(() => {
+          refreshPromise = null
+        })
+      }
+      try {
+        const newAccess = await refreshPromise
+        return await rawRequest<T>(path, { ...options, token: newAccess })
+      } catch {
+        tokenStorage.clear()
+        throw new ApiError('Session expired. Please log in again.', 401, null)
+      }
+    }
+    throw err
+  }
 }

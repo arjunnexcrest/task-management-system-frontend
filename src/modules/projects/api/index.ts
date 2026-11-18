@@ -1,18 +1,24 @@
 import { env } from '@/config/env'
+import { tokenStorage } from '@/api/client'
 
 const BASE_URL = `${env.apiBaseUrl}/api`
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = tokenStorage.getAccess()
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options?.headers || {}),
     },
     ...options,
   })
   if (!res.ok) {
     const errText = await res.text()
-    throw new Error(errText || `HTTP error ${res.status}`)
+    if (errText && !errText.trim().startsWith('<')) {
+      throw new Error(errText || `HTTP error ${res.status}`)
+    }
+    throw new Error(`HTTP error ${res.status}: ${res.statusText}`)
   }
   if (res.status === 204) {
     return undefined as T
