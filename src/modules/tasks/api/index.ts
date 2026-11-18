@@ -161,6 +161,7 @@ export interface Task {
   is_overdue: boolean
   days_remaining?: number | null
   due_status?: 'Overdue' | 'Due Today' | 'Due Soon' | 'On Track' | 'Completed' | 'No Due Date'
+  allowed_transitions?: Task['status'][]
   subtasks_count: number
   active_assignments: ActiveAssignmentSummary[]
   tags: string[]
@@ -208,11 +209,26 @@ export const tasksApi = {
       method: 'DELETE',
     }),
 
-  transitionStatus: (taskId: string, status: Task['status']) =>
+  transitionStatus: (
+    taskId: string,
+    status: Task['status'],
+    options?: {
+      reason?: string
+      override_subtasks?: boolean
+      override_reason?: string
+    },
+  ) =>
     request<TaskDetail>(`/tasks/${taskId}/transition-status/`, {
       method: 'POST',
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, ...(options || {}) }),
     }),
+
+  getAllowedTransitions: (taskId: string) =>
+    request<{
+      task_id: string
+      current_status: Task['status']
+      allowed_transitions: Task['status'][]
+    }>(`/tasks/${taskId}/allowed-transitions/`),
 
   assignTask: (
     taskId: string,

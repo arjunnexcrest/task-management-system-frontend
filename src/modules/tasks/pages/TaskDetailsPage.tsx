@@ -43,6 +43,11 @@ export function Page() {
   const [schedReason, setSchedReason] = useState('')
   const [schedSaving, setSchedSaving] = useState(false)
 
+  // Workflow Transition State (SRS §7.3 & §22)
+  const [transitionReason, setTransitionReason] = useState('')
+  const [overrideSubtasks, setOverrideSubtasks] = useState(false)
+  const [overrideReason, setOverrideReason] = useState('')
+
   // Dependency State
   const [selectedPrereqTask, setSelectedPrereqTask] = useState('')
 
@@ -128,9 +133,16 @@ export function Page() {
     setPageError(null)
     setPageSuccess(null)
     try {
-      await tasksApi.transitionStatus(id, newStatus)
+      await tasksApi.transitionStatus(id, newStatus, {
+        reason: transitionReason.trim() || undefined,
+        override_subtasks: overrideSubtasks,
+        override_reason: overrideSubtasks ? overrideReason.trim() || undefined : undefined,
+      })
+      setTransitionReason('')
+      setOverrideSubtasks(false)
+      setOverrideReason('')
       await refresh()
-      setPageSuccess(`Task status updated to "${newStatus}".`)
+      setPageSuccess(`Task status transitioned to "${newStatus}" (workflow validated).`)
     } catch (err) {
       setPageError(err instanceof Error ? err.message : 'Failed to transition status')
     }
@@ -340,6 +352,97 @@ export function Page() {
           <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
             Effort: {task.actual_effort_hours ?? 0}h actual / {task.estimated_effort || 0}h est.
           </div>
+        </div>
+      </div>
+
+      {/* SRS §7.3 TASK STATUS WORKFLOW & VALIDATION CARD */}
+      <div className="card" style={{ marginBottom: '1.25rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+            marginBottom: '0.75rem',
+          }}
+        >
+          <div>
+            <p className="eyebrow">SRS §7.3, §14.3 &amp; §22 · Validated Workflow Engine</p>
+            <h3 style={{ margin: 0 }}>
+              Status Workflow — Current: <span className="badge badge-high">{task.status}</span>
+            </h3>
+          </div>
+          {task.approval_required && (
+            <span className="badge badge-medium">
+              Approval Required Before Completed
+            </span>
+          )}
+        </div>
+
+        <div className="form-grid" style={{ marginBottom: '0.85rem' }}>
+          <div className="form-field">
+            <label>Transition Note / Reason (Optional)</label>
+            <input
+              className="input"
+              placeholder="e.g. Ready for QA review, blocked on API credentials..."
+              value={transitionReason}
+              onChange={(e) => setTransitionReason(e.target.value)}
+            />
+          </div>
+          {task.subtasks.some((st) => st.status !== 'Completed' && st.status !== 'Cancelled') && (
+            <div className="form-field">
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={overrideSubtasks}
+                  onChange={(e) => setOverrideSubtasks(e.target.checked)}
+                />
+                <span>Authorized Subtask Override (SRS §8.3 &amp; §22 #9)</span>
+              </label>
+              {overrideSubtasks && (
+                <input
+                  className="input"
+                  placeholder="Required override reason..."
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                />
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="btn-row" style={{ flexWrap: 'wrap', gap: '0.45rem' }}>
+          <span style={{ fontSize: '0.82rem', color: 'var(--muted)', fontWeight: 600 }}>
+            Permitted Next Transitions:
+          </span>
+          {(task.allowed_transitions || []).length > 0 ? (
+            (task.allowed_transitions || []).map((nextSt) => (
+              <button
+                key={nextSt}
+                type="button"
+                className={
+                  nextSt === 'Completed' || nextSt === 'Approved'
+                    ? 'btn btn-primary btn-sm'
+                    : 'btn btn-sm'
+                }
+                onClick={() => handleStatusChange(nextSt)}
+              >
+                → {nextSt}
+              </button>
+            ))
+          ) : (
+            <span style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>
+              No outgoing transitions configured.
+            </span>
+          )}
         </div>
       </div>
 
