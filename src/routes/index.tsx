@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
+import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 import { Page as HomePage } from '@/modules/common/pages/HomePage'
 import { Page as LoginPage } from '@/modules/accounts/pages/LoginPage'
 import { Page as ForgotPasswordPage } from '@/modules/accounts/pages/ForgotPasswordPage'
@@ -41,12 +42,21 @@ import { Page as SettingsPage } from '@/modules/system_settings/pages/SettingsPa
 export function AppRoutes() {
   return (
     <Routes>
-      <Route element={<AppShell />}>
+      {/* Standalone Public Auth Pages (No Sidebar — shown before login) */}
+      <Route path="login" element={<LoginPage />} />
+      <Route path="forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="reset-password" element={<ResetPasswordPage />} />
+      <Route path="activate" element={<AccountActivationPage />} />
+
+      {/* Protected Dashboard Routes (Accessible ONLY after login) */}
+      <Route
+        element={
+          <ProtectedRoute>
+            <AppShell />
+          </ProtectedRoute>
+        }
+      >
         <Route index element={<HomePage />} />
-        <Route path="login" element={<LoginPage />} />
-        <Route path="forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="reset-password" element={<ResetPasswordPage />} />
-        <Route path="activate" element={<AccountActivationPage />} />
         <Route path="employees" element={<EmployeeListPage />} />
         <Route path="employees/:id" element={<EmployeeProfilePage />} />
         <Route path="companies" element={<CompanyListPage />} />
