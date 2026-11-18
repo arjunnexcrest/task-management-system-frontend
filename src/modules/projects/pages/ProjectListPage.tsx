@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { type LookupData, type Project, projectsApi } from '@/modules/projects/api'
 
 function badgeClass(value: string) {
@@ -22,6 +23,8 @@ export function Page() {
   const [priorityFilter, setPriorityFilter] = useState('')
   const [departmentFilter, setDepartmentFilter] = useState('')
   const [memberFilter, setMemberFilter] = useState('')
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     projectsApi.getLookup().then(setLookup).catch(() => {})
@@ -51,16 +54,18 @@ export function Page() {
     }
   }
 
-  async function handleDelete(project: Project) {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete project "${project.code} — ${project.name}"?`,
-    )
-    if (!confirmed) return
+  async function confirmDeleteProject() {
+    if (!projectToDelete) return
+    setDeleting(true)
     try {
-      await projectsApi.deleteProject(project.id)
+      await projectsApi.deleteProject(projectToDelete.id)
+      setProjectToDelete(null)
       await loadProjects()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete project')
+      setProjectToDelete(null)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -309,7 +314,7 @@ export function Page() {
                         type="button"
                         className="btn btn-sm"
                         style={{ color: '#991b1b', borderColor: '#fecaca' }}
-                        onClick={() => handleDelete(p)}
+                        onClick={() => setProjectToDelete(p)}
                       >
                         Delete
                       </button>
@@ -326,6 +331,20 @@ export function Page() {
           </table>
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(projectToDelete)}
+        title="Delete Project"
+        message={
+          projectToDelete
+            ? `Permanently delete project "${projectToDelete.code} — ${projectToDelete.name}" and its associated tasks? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete Project"
+        loading={deleting}
+        onConfirm={confirmDeleteProject}
+        onCancel={() => setProjectToDelete(null)}
+      />
     </div>
   )
 }

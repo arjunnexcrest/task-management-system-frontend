@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { type LookupData, projectsApi } from '@/modules/projects/api'
 import { type Task, type TaskDetail, tasksApi } from '@/modules/tasks/api'
 
@@ -26,6 +27,8 @@ export function Page() {
   const [loading, setLoading] = useState(true)
   const [pageError, setPageError] = useState<string | null>(null)
   const [pageSuccess, setPageSuccess] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   // Assignment Form State
   const [assignType, setAssignType] = useState<'User' | 'Team'>('User')
@@ -161,16 +164,16 @@ export function Page() {
 
   async function handleDeleteTask() {
     if (!task) return
-    const confirmed = window.confirm(
-      `Are you sure you want to permanently delete "${task.title}"?`,
-    )
-    if (!confirmed) return
+    setDeleting(true)
     setPageError(null)
     try {
       await tasksApi.deleteTask(task.id)
       navigate('/tasks')
     } catch (err) {
       setPageError(err instanceof Error ? err.message : 'Failed to delete task')
+      setShowDeleteConfirm(false)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -357,7 +360,7 @@ export function Page() {
             type="button"
             className="btn"
             style={{ color: '#991b1b', borderColor: '#fecaca' }}
-            onClick={handleDeleteTask}
+            onClick={() => setShowDeleteConfirm(true)}
           >
             Delete Task
           </button>
@@ -1306,6 +1309,20 @@ export function Page() {
             })}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Delete Task"
+        message={
+          task
+            ? `Are you sure you want to permanently delete "${task.title}"? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete Task"
+        loading={deleting}
+        onConfirm={handleDeleteTask}
+        onCancel={() => !deleting && setShowDeleteConfirm(false)}
+      />
     </div>
   )
 }

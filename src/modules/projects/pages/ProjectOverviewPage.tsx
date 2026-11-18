@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { type LookupData, type ProjectDetail, projectsApi } from '@/modules/projects/api'
 import { type Task, tasksApi } from '@/modules/tasks/api'
 
@@ -16,6 +17,8 @@ export function Page() {
   // Close Project state (SRS §6.6)
   const [showCloseBox, setShowCloseBox] = useState(false)
   const [closureRemarks, setClosureRemarks] = useState('')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   // Add Member state
   const [newMemberUser, setNewMemberUser] = useState('')
@@ -87,15 +90,15 @@ export function Page() {
 
   async function handleDeleteProject() {
     if (!project) return
-    const confirmed = window.confirm(
-      `Are you sure you want to permanently delete project "${project.code} — ${project.name}"?`,
-    )
-    if (!confirmed) return
+    setDeleting(true)
     try {
       await projectsApi.deleteProject(project.id)
       navigate('/projects')
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to delete project')
+      setShowDeleteConfirm(false)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -183,7 +186,7 @@ export function Page() {
             type="button"
             className="btn"
             style={{ color: '#991b1b', borderColor: '#fecaca' }}
-            onClick={handleDeleteProject}
+            onClick={() => setShowDeleteConfirm(true)}
           >
             Delete
           </button>
@@ -551,6 +554,16 @@ export function Page() {
           </tbody>
         </table>
       </div>
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Delete Project"
+        message={`Permanently delete project "${project.code} — ${project.name}" and its associated tasks? This action cannot be undone.`}
+        confirmLabel="Delete Project"
+        loading={deleting}
+        onConfirm={handleDeleteProject}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { type LookupData, type Project, projectsApi } from '@/modules/projects/api'
 import { type Task, tasksApi } from '@/modules/tasks/api'
 
@@ -56,6 +57,8 @@ export function Page() {
   const [bulkReplaceExisting, setBulkReplaceExisting] = useState(false)
   const [bulkSuccess, setBulkSuccess] = useState<string | null>(null)
   const [bulkSaving, setBulkSaving] = useState(false)
+  const [taskToDelete, setTaskToDelete] = useState<Task | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     Promise.all([projectsApi.getLookup(), projectsApi.listProjects()])
@@ -106,18 +109,20 @@ export function Page() {
     }
   }
 
-  async function handleDeleteTask(task: Task) {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${task.is_subtask ? 'subtask' : 'task'} "${task.title}"?`,
-    )
-    if (!confirmed) return
+  async function confirmDeleteTask() {
+    if (!taskToDelete) return
+    setDeleting(true)
     setError(null)
     try {
-      await tasksApi.deleteTask(task.id)
-      setSelectedTaskIds((prev) => prev.filter((id) => id !== task.id))
+      await tasksApi.deleteTask(taskToDelete.id)
+      setSelectedTaskIds((prev) => prev.filter((id) => id !== taskToDelete.id))
+      setTaskToDelete(null)
       await loadTasks()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete task')
+      setTaskToDelete(null)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -619,7 +624,7 @@ export function Page() {
                         type="button"
                         className="btn btn-sm"
                         style={{ color: '#991b1b', borderColor: '#fecaca' }}
-                        onClick={() => handleDeleteTask(t)}
+                        onClick={() => setTaskToDelete(t)}
                       >
                         Delete
                       </button>
@@ -638,6 +643,20 @@ export function Page() {
           </table>
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(taskToDelete)}
+        title={taskToDelete?.is_subtask ? 'Delete Subtask' : 'Delete Task'}
+        message={
+          taskToDelete
+            ? `Permanently delete "${taskToDelete.title}"${taskToDelete.subtasks_count > 0 ? ` and its ${taskToDelete.subtasks_count} subtask(s)` : ''}? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete Task"
+        loading={deleting}
+        onConfirm={confirmDeleteTask}
+        onCancel={() => setTaskToDelete(null)}
+      />
     </div>
   )
 }
