@@ -1,4 +1,5 @@
 import { env } from '@/config/env'
+import type { CreateProgressUpdatePayload, ProgressUpdateItem } from '@/modules/tracking/api'
 
 const BASE_URL = `${env.apiBaseUrl}/api`
 
@@ -188,6 +189,7 @@ export interface TaskDetail extends Task {
   dependencies: TaskDependency[]
   checklists: Checklist[]
   comments: TaskComment[]
+  progress_updates?: ProgressUpdateItem[]
 }
 
 export const tasksApi = {
@@ -389,6 +391,19 @@ export const tasksApi = {
   deleteComment: (commentId: string) =>
     request<void>(`/tasks/comments/${commentId}/`, {
       method: 'DELETE',
+    }),
+
+  listProgressUpdates: async (taskId: string) => {
+    const data = await request<ProgressUpdateItem[] | { results: ProgressUpdateItem[] }>(
+      `/tasks/${taskId}/progress-updates/`,
+    )
+    return unwrapList(data)
+  },
+
+  addProgressUpdate: (taskId: string, payload: Omit<CreateProgressUpdatePayload, 'task'>) =>
+    request<ProgressUpdateItem>(`/tasks/${taskId}/progress-updates/`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
 
   getKanban: (projectId?: string) => {

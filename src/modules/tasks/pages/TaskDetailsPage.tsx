@@ -70,6 +70,19 @@ export function Page() {
   const [quickSubtaskOwner, setQuickSubtaskOwner] = useState('')
   const [quickSubtaskDue, setQuickSubtaskDue] = useState('')
 
+  // Progress Update & Remarks State (SRS §7.5, §7.6, §9.1, §9.4)
+  const [progPct, setProgPct] = useState('0')
+  const [progWorkCompleted, setProgWorkCompleted] = useState('')
+  const [progRemainingWork, setProgRemainingWork] = useState('')
+  const [progRemarks, setProgRemarks] = useState('')
+  const [progBlockers, setProgBlockers] = useState('')
+  const [progTimeSpent, setProgTimeSpent] = useState('')
+  const [progNextAction, setProgNextAction] = useState('')
+  const [progAuthor, setProgAuthor] = useState('')
+  const [progMarkBlocked, setProgMarkBlocked] = useState(false)
+  const [progBlockerImpact, setProgBlockerImpact] = useState<'Low' | 'Medium' | 'High' | 'Critical'>('High')
+  const [progSaving, setProgSaving] = useState(false)
+
   async function refresh() {
     if (!id) return
     const [taskData, lkp] = await Promise.all([tasksApi.getTask(id), projectsApi.getLookup()])
@@ -79,6 +92,10 @@ export function Page() {
     setSchedStartDate(taskData.start_date || '')
     setSchedDueDate(taskData.due_date || '')
     setSchedEffort(taskData.estimated_effort ? String(taskData.estimated_effort) : '')
+    setProgPct(String(Math.round(Number(taskData.progress || 0))))
+    if (!progAuthor && (taskData.task_owner || lkp.users[0]?.id)) {
+      setProgAuthor(taskData.task_owner || lkp.users[0]?.id || '')
+    }
     if (!selectedUser && lkp.users.length > 0) setSelectedUser(lkp.users[0].id)
     if (!selectedTeam && lkp.teams.length > 0) setSelectedTeam(lkp.teams[0].id)
     tasksApi
@@ -298,6 +315,56 @@ export function Page() {
       setPageSuccess('Subtask created and linked to parent task.')
     } catch (err) {
       setPageError(err instanceof Error ? err.message : 'Failed to create subtask')
+    }
+  }
+
+  async function handleProgressMethodChange(method: Task['progress_method']) {
+    if (!task) return
+    setPageError(null)
+    setPageSuccess(null)
+    try {
+      await tasksApi.updateTask(task.id, { progress_method: method })
+      await refresh()
+      setPageSuccess(
+        `Progress calculation method changed to "${method}" (SRS §7.6).`,
+      )
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'Failed to update progress method')
+    }
+  }
+
+  async function handleSubmitProgressUpdate(e: FormEvent) {
+    e.preventDefault()
+    if (!task) return
+    setProgSaving(true)
+    setPageError(null)
+    setPageSuccess(null)
+    try {
+      await tasksApi.addProgressUpdate(task.id, {
+        author: progAuthor || undefined,
+        progress_percentage: Number(progPct),
+        work_completed: progWorkCompleted.trim() || null,
+        remaining_work: progRemainingWork.trim() || null,
+        remarks: progRemarks.trim() || null,
+        blockers: progBlockers.trim() || null,
+        time_spent_minutes: progTimeSpent ? Number(progTimeSpent) : null,
+        next_action: progNextAction.trim() || null,
+        mark_task_blocked: progBlockers.trim() ? progMarkBlocked : false,
+        blocker_impact: progBlockerImpact,
+      })
+      setProgWorkCompleted('')
+      setProgRemainingWork('')
+      setProgRemarks('')
+      setProgBlockers('')
+      setProgTimeSpent('')
+      setProgNextAction('')
+      setProgMarkBlocked(false)
+      await refresh()
+      setPageSuccess('Progress update and remarks recorded in progress_updates history.')
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'Failed to submit progress update')
+    } finally {
+      setProgSaving(false)
     }
   }
 
@@ -1307,6 +1374,367 @@ export function Page() {
                 </div>
               )
             })}
+        </div>
+      </div>
+
+      {/* PROGRESS UPDATES, CALCULATION METHOD & REMARKS SECTION (SRS §7.5, §7.6, §9.1 & §9.4) */}
+      <div className="card" style={{ marginTop: '1.25rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+            marginBottom: '1rem',
+          }}
+        >
+          <div>
+            <p className="eyebrow">SRS §7.5, §7.6 &amp; §9.1 · Append-Only Progress History (`progress_updates`)</p>
+            <h2 style={{ margin: 0 }}>
+              Progress Updates &amp; Remarks ({(task.progress_updates || []).length})
+            </h2>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.82rem', color: 'var(--muted)', fontWeight: 600 }}>
+              Calculation Method (SRS §7.6):
+            </span>
+            <select
+              className="select"
+              style={{ width: 'auto', minWidth: '185px' }}
+              value={task.progress_method}
+              onChange={(e) =>
+                handleProgressMethodChange(e.target.value as Task['progress_method'])
+              }
+            >
+              <option value="Manual">Manual Percentage</option>
+              <option value="Subtasks">Automatic: Weighted Subtasks</option>
+              <option value="Checklist">Automatic: Checklist Items</option>
+            </select>
+            <Link to="/work-log" className="btn btn-sm">
+              Daily Work Log →
+            </Link>
+          </div>
+        </div>
+
+        {/* Visual Progress Bar */}
+        <div
+          style={{
+            padding: '0.85rem 1rem',
+            borderRadius: '0.6rem',
+            background: '#f8fafc',
+            border: '1px solid var(--line)',
+            marginBottom: '1.25rem',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '0.85rem',
+              marginBottom: '0.4rem',
+            }}
+          >
+            <span>
+              <strong>Current Task Progress:</strong> {Number(task.progress).toFixed(1)}% (
+              {task.progress_method === 'Manual'
+                ? 'Manual — preserved from automatic overwrite per DB Design §5'
+                : task.progress_method === 'Subtasks'
+                  ? 'Calculated from weighted/equal subtask progress'
+                  : 'Calculated from completed checklist items'}
+              )
+            </span>
+            <span className="badge badge-active">{Number(task.progress).toFixed(0)}%</span>
+          </div>
+          <div className="progress-bar">
+            <div
+              className="progress-fill"
+              style={{ width: `${Math.min(100, Math.max(0, Number(task.progress)))}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Submit Progress Update & Remarks Form */}
+        <form
+          onSubmit={handleSubmitProgressUpdate}
+          style={{
+            padding: '1rem',
+            borderRadius: '0.6rem',
+            background: '#f8fafc',
+            border: '1px solid var(--line)',
+            marginBottom: '1.25rem',
+          }}
+        >
+          <h3 style={{ marginTop: 0, marginBottom: '0.75rem' }}>
+            Submit Work Progress Update &amp; Remarks
+          </h3>
+          <div className="form-grid">
+            <div className="form-field">
+              <label>Reported Progress Percentage ({progPct}%)</label>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={progPct}
+                  onChange={(e) => setProgPct(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  className="input"
+                  style={{ width: '80px' }}
+                  value={progPct}
+                  onChange={(e) => setProgPct(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="form-field">
+              <label>Time Spent (Minutes — Auto-logs to Time Entries)</label>
+              <input
+                type="number"
+                min="0"
+                step="5"
+                className="input"
+                placeholder="e.g. 90"
+                value={progTimeSpent}
+                onChange={(e) => setProgTimeSpent(e.target.value)}
+              />
+            </div>
+
+            <div className="form-field">
+              <label>Update Author</label>
+              <select
+                className="select"
+                value={progAuthor}
+                onChange={(e) => setProgAuthor(e.target.value)}
+              >
+                <option value="">Default (Task Owner / Current User)</option>
+                {lookup?.users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.full_name} ({u.designation || u.email})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-field">
+              <label>Next Planned Action (SRS §7.5 &amp; §9.1)</label>
+              <input
+                className="input"
+                placeholder="e.g. Complete unit tests and request code review..."
+                value={progNextAction}
+                onChange={(e) => setProgNextAction(e.target.value)}
+              />
+            </div>
+
+            <div className="form-field">
+              <label>Work Completed (`work_completed`)</label>
+              <textarea
+                className="textarea"
+                rows={2}
+                placeholder="Summary of work completed in this update..."
+                value={progWorkCompleted}
+                onChange={(e) => setProgWorkCompleted(e.target.value)}
+              />
+            </div>
+
+            <div className="form-field">
+              <label>Remaining Work (`remaining_work`)</label>
+              <textarea
+                className="textarea"
+                rows={2}
+                placeholder="Pending deliverables or steps left..."
+                value={progRemainingWork}
+                onChange={(e) => setProgRemainingWork(e.target.value)}
+              />
+            </div>
+
+            <div className="form-field">
+              <label>Remarks / Observations (`remarks`)</label>
+              <textarea
+                className="textarea"
+                rows={2}
+                placeholder="Enter remarks, notes, or implementation context..."
+                value={progRemarks}
+                onChange={(e) => setProgRemarks(e.target.value)}
+              />
+            </div>
+
+            <div className="form-field">
+              <label>Blockers (`blockers` — SRS §7.5 &amp; §9.4)</label>
+              <textarea
+                className="textarea"
+                rows={2}
+                placeholder="Leave blank if none, or describe any blocker..."
+                value={progBlockers}
+                onChange={(e) => setProgBlockers(e.target.value)}
+              />
+              {progBlockers.trim() && (
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '0.75rem',
+                    alignItems: 'center',
+                    marginTop: '0.4rem',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={progMarkBlocked}
+                      onChange={(e) => setProgMarkBlocked(e.target.checked)}
+                    />
+                    <span>Transition task status to Blocked</span>
+                  </label>
+                  <select
+                    className="select"
+                    style={{ width: 'auto', padding: '0.25rem 0.5rem', fontSize: '0.78rem' }}
+                    value={progBlockerImpact}
+                    onChange={(e) =>
+                      setProgBlockerImpact(
+                        e.target.value as 'Low' | 'Medium' | 'High' | 'Critical',
+                      )
+                    }
+                  >
+                    <option value="Low">Impact: Low</option>
+                    <option value="Medium">Impact: Medium</option>
+                    <option value="High">Impact: High</option>
+                    <option value="Critical">Impact: Critical</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="btn-row" style={{ marginTop: '0.85rem' }}>
+            <button type="submit" className="btn btn-primary btn-sm" disabled={progSaving}>
+              {progSaving ? 'Recording Update...' : '+ Submit Progress Update & Remarks'}
+            </button>
+          </div>
+        </form>
+
+        {/* Append-Only Progress Updates History Feed */}
+        <div style={{ display: 'grid', gap: '0.75rem' }}>
+          {(task.progress_updates || []).map((pu) => (
+            <div
+              key={pu.id}
+              style={{
+                padding: '0.9rem 1rem',
+                borderRadius: '0.55rem',
+                border: pu.blockers ? '1px solid #fecaca' : '1px solid var(--line)',
+                background: pu.blockers ? '#fffafa' : '#ffffff',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem',
+                  marginBottom: '0.5rem',
+                }}
+              >
+                <div>
+                  <strong>{pu.author_name}</strong>{' '}
+                  <span style={{ color: 'var(--muted)', fontSize: '0.78rem' }}>
+                    · {new Date(pu.created_at).toLocaleString()}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                  <span className="badge badge-active">
+                    {Number(pu.progress_percentage).toFixed(0)}% Progress
+                  </span>
+                  {pu.time_spent_minutes !== null && pu.time_spent_minutes > 0 && (
+                    <span className="badge badge-in-progress">
+                      {pu.time_spent_minutes} mins ({(pu.time_spent_minutes / 60).toFixed(1)}h)
+                    </span>
+                  )}
+                  {pu.blockers && <span className="badge badge-critical">Blocker Reported</span>}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: '0.6rem',
+                  fontSize: '0.85rem',
+                }}
+              >
+                {pu.work_completed && (
+                  <div>
+                    <strong style={{ color: 'var(--muted)', fontSize: '0.75rem', display: 'block' }}>
+                      WORK COMPLETED
+                    </strong>
+                    {pu.work_completed}
+                  </div>
+                )}
+                {pu.remaining_work && (
+                  <div>
+                    <strong style={{ color: 'var(--muted)', fontSize: '0.75rem', display: 'block' }}>
+                      REMAINING WORK
+                    </strong>
+                    {pu.remaining_work}
+                  </div>
+                )}
+                {pu.remarks && (
+                  <div>
+                    <strong style={{ color: 'var(--muted)', fontSize: '0.75rem', display: 'block' }}>
+                      REMARKS
+                    </strong>
+                    {pu.remarks}
+                  </div>
+                )}
+                {pu.next_action && (
+                  <div>
+                    <strong style={{ color: 'var(--muted)', fontSize: '0.75rem', display: 'block' }}>
+                      NEXT PLANNED ACTION
+                    </strong>
+                    {pu.next_action}
+                  </div>
+                )}
+              </div>
+
+              {pu.blockers && (
+                <div
+                  style={{
+                    marginTop: '0.6rem',
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '0.4rem',
+                    background: '#fef2f2',
+                    color: '#991b1b',
+                    fontSize: '0.83rem',
+                  }}
+                >
+                  <strong>Blocker:</strong> {pu.blockers}
+                </div>
+              )}
+            </div>
+          ))}
+          {(task.progress_updates || []).length === 0 && (
+            <p style={{ color: 'var(--muted)', fontSize: '0.86rem', margin: 0 }}>
+              No progress updates recorded yet. Submit the first update above to log progress percentage,
+              work completed, remarks, and time spent.
+            </p>
+          )}
         </div>
       </div>
 
