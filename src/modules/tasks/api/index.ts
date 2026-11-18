@@ -109,6 +109,13 @@ export interface TaskComment {
   author_name: string
   parent_comment: string | null
   content: string
+  mentions?: Array<{
+    id: string
+    comment: string
+    mentioned_user: string
+    mentioned_user_name: string
+  }>
+  replies_count?: number
   created_at: string
   updated_at: string | null
 }
@@ -313,10 +320,47 @@ export const tasksApi = {
       body: JSON.stringify(payload),
     }),
 
-  createChecklistItem: (payload: { checklist: string; title: string; sort_order?: number }) =>
+  deleteChecklist: (checklistId: string) =>
+    request<void>(`/tasks/checklists/${checklistId}/`, {
+      method: 'DELETE',
+    }),
+
+  reorderChecklistItems: (checklistId: string, itemIds: string[]) =>
+    request<Checklist>(`/tasks/checklists/${checklistId}/reorder_items/`, {
+      method: 'POST',
+      body: JSON.stringify({ item_ids: itemIds }),
+    }),
+
+  createChecklistItem: (payload: {
+    checklist: string
+    title: string
+    notes?: string | null
+    link?: string | null
+    sort_order?: number
+  }) =>
     request<ChecklistItem>('/tasks/checklist-items/', {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+
+  updateChecklistItem: (
+    itemId: string,
+    payload: {
+      title?: string
+      notes?: string | null
+      link?: string | null
+      is_completed?: boolean
+      sort_order?: number
+    },
+  ) =>
+    request<ChecklistItem>(`/tasks/checklist-items/${itemId}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteChecklistItem: (itemId: string) =>
+    request<void>(`/tasks/checklist-items/${itemId}/`, {
+      method: 'DELETE',
     }),
 
   toggleChecklistItem: (itemId: string) =>
@@ -324,10 +368,27 @@ export const tasksApi = {
       method: 'POST',
     }),
 
-  addComment: (payload: { task: string; content: string; author?: string }) =>
+  addComment: (payload: {
+    task: string
+    content: string
+    parent_comment?: string | null
+    mentioned_user_ids?: string[]
+    author?: string
+  }) =>
     request<TaskComment>('/tasks/comments/', {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+
+  updateComment: (commentId: string, payload: { content: string; mentioned_user_ids?: string[] }) =>
+    request<TaskComment>(`/tasks/comments/${commentId}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteComment: (commentId: string) =>
+    request<void>(`/tasks/comments/${commentId}/`, {
+      method: 'DELETE',
     }),
 
   getKanban: (projectId?: string) => {

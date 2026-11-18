@@ -54,7 +54,18 @@ export function Page() {
   // Checklist & Comment State
   const [newChecklistTitle, setNewChecklistTitle] = useState('')
   const [newItemText, setNewItemText] = useState<Record<string, string>>({})
+  const [newItemNotes, setNewItemNotes] = useState<Record<string, string>>({})
+  const [newItemLink, setNewItemLink] = useState<Record<string, string>>({})
   const [commentText, setCommentText] = useState('')
+  const [replyToId, setReplyToId] = useState<string | null>(null)
+  const [mentionUserIds, setMentionUserIds] = useState<string[]>([])
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editingCommentText, setEditingCommentText] = useState('')
+
+  // Quick Subtask State (SRS §8.1)
+  const [quickSubtaskTitle, setQuickSubtaskTitle] = useState('')
+  const [quickSubtaskOwner, setQuickSubtaskOwner] = useState('')
+  const [quickSubtaskDue, setQuickSubtaskDue] = useState('')
 
   async function refresh() {
     if (!id) return
@@ -201,8 +212,33 @@ export function Page() {
   async function handleAddChecklistItem(checklistId: string) {
     const text = (newItemText[checklistId] || '').trim()
     if (!text) return
-    await tasksApi.createChecklistItem({ checklist: checklistId, title: text })
+    await tasksApi.createChecklistItem({
+      checklist: checklistId,
+      title: text,
+      notes: (newItemNotes[checklistId] || '').trim() || null,
+      link: (newItemLink[checklistId] || '').trim() || null,
+    })
     setNewItemText((prev) => ({ ...prev, [checklistId]: '' }))
+    setNewItemNotes((prev) => ({ ...prev, [checklistId]: '' }))
+    setNewItemLink((prev) => ({ ...prev, [checklistId]: '' }))
+    await refresh()
+  }
+
+  async function handleMoveChecklistItem(checklistId: string, itemId: string, direction: -1 | 1) {
+    const cl = task?.checklists.find((c) => c.id === checklistId)
+    if (!cl) return
+    const ids = cl.items.map((it) => it.id)
+    const idx = ids.indexOf(itemId)
+    const targetIdx = idx + direction
+    if (idx < 0 || targetIdx < 0 || targetIdx >= ids.length) return
+    const nextIds = [...ids]
+    ;[nextIds[idx], nextIds[targetIdx]] = [nextIds[targetIdx], nextIds[idx]]
+    await tasksApi.reorderChecklistItems(checklistId, nextIds)
+    await refresh()
+  }
+
+  async function handleDeleteChecklistItem(itemId: string) {
+    await tasksApi.deleteChecklistItem(itemId)
     await refresh()
   }
 
@@ -214,9 +250,52 @@ export function Page() {
   async function handleAddComment(e: FormEvent) {
     e.preventDefault()
     if (!id || !commentText.trim()) return
-    await tasksApi.addComment({ task: id, content: commentText.trim() })
+    await tasksApi.addComment({
+      task: id,
+      content: commentText.trim(),
+      parent_comment: replyToId,
+      mentioned_user_ids: mentionUserIds,
+    })
     setCommentText('')
+    setReplyToId(null)
+    setMentionUserIds([])
     await refresh()
+  }
+
+  async function handleSaveCommentEdit(commentId: string) {
+    if (!editingCommentText.trim()) return
+    await tasksApi.updateComment(commentId, { content: editingCommentText.trim() })
+    setEditingCommentId(null)
+    setEditingCommentText('')
+    await refresh()
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    await tasksApi.deleteComment(commentId)
+    await refresh()
+  }
+
+  async function handleQuickAddSubtask(e: FormEvent) {
+    e.preventDefault()
+    if (!task || !quickSubtaskTitle.trim()) return
+    setPageError(null)
+    try {
+      await tasksApi.createTask({
+        project: task.project,
+        parent_task: task.id,
+        title: quickSubtaskTitle.trim(),
+        task_owner: quickSubtaskOwner || task.task_owner || null,
+        due_date: quickSubtaskDue || null,
+        priority: task.priority,
+        status: 'To Do',
+      })
+      setQuickSubtaskTitle('')
+      setQuickSubtaskDue('')
+      await refresh()
+      setPageSuccess('Subtask created and linked to parent task.')
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'Failed to create subtask')
+    }
   }
 
   if (loading) return <p className="page-container">Loading task details...</p>
@@ -791,15 +870,62 @@ export function Page() {
 
         {!task.is_subtask && (
           <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3>Subtasks ({task.subtasks.length})</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <h3 style={{ margin: 0 }}>Subtasks ({task.subtasks.length})</h3>
               <Link
                 to={`/tasks/new?project=${task.project}&parent=${task.id}`}
-                className="btn btn-sm btn-primary"
+                className="btn btn-sm"
               >
-                + Add Subtask
+                Full Form
               </Link>
             </div>
+
+            {/* Quick Inline Subtask Form (SRS §8.1) */}
+            <form
+              onSubmit={handleQuickAddSubtask}
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '0.45rem',
+                marginBottom: '0.85rem',
+                padding: '0.65rem',
+                borderRadius: '0.5rem',
+                background: '#f8fafc',
+                border: '1px solid var(--line)',
+              }}
+            >
+              <input
+                className="input"
+                style={{ flex: '2 1 180px' }}
+                placeholder="Quick subtask title..."
+                value={quickSubtaskTitle}
+                onChange={(e) => setQuickSubtaskTitle(e.target.value)}
+              />
+              <select
+                className="select"
+                style={{ flex: '1 1 130px' }}
+                value={quickSubtaskOwner}
+                onChange={(e) => setQuickSubtaskOwner(e.target.value)}
+              >
+                <option value="">Owner (Same as parent)</option>
+                {lookup?.users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.full_name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="date"
+                className="input"
+                style={{ width: 'auto' }}
+                value={quickSubtaskDue}
+                onChange={(e) => setQuickSubtaskDue(e.target.value)}
+              />
+              <button type="submit" className="btn btn-sm btn-primary">
+                + Add Subtask
+              </button>
+            </form>
+
             {task.subtasks.map((st) => (
               <div
                 key={st.id}
@@ -849,99 +975,335 @@ export function Page() {
           </form>
 
           {task.checklists.map((cl) => (
-            <div key={cl.id} style={{ marginBottom: '1rem' }}>
+            <div
+              key={cl.id}
+              style={{
+                marginBottom: '1.15rem',
+                padding: '0.85rem',
+                borderRadius: '0.55rem',
+                background: '#f8fafc',
+                border: '1px solid var(--line)',
+              }}
+            >
               <div
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
+                  alignItems: 'center',
                   fontWeight: 600,
-                  marginBottom: '0.35rem',
+                  marginBottom: '0.55rem',
                 }}
               >
                 <span>{cl.title}</span>
-                <span>{cl.completion_percentage}%</span>
+                <span className="badge badge-active">{cl.completion_percentage}% Done</span>
               </div>
-              {cl.items.map((item) => (
-                <label
+              {cl.items.map((item, idx) => (
+                <div
                   key={item.id}
                   style={{
                     display: 'flex',
-                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
                     gap: '0.5rem',
-                    fontSize: '0.9rem',
-                    padding: '0.25rem 0',
-                    cursor: 'pointer',
+                    padding: '0.4rem 0',
+                    borderBottom: '1px solid var(--line)',
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={item.is_completed}
-                    onChange={() => handleToggleItem(item.id)}
-                  />
-                  <span
+                  <label
                     style={{
-                      textDecoration: item.is_completed ? 'line-through' : 'none',
-                      color: item.is_completed ? 'var(--muted)' : 'inherit',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '0.5rem',
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                      flex: 1,
                     }}
                   >
-                    {item.title}
-                  </span>
-                </label>
+                    <input
+                      type="checkbox"
+                      checked={item.is_completed}
+                      onChange={() => handleToggleItem(item.id)}
+                      style={{ marginTop: '0.2rem' }}
+                    />
+                    <div>
+                      <div
+                        style={{
+                          textDecoration: item.is_completed ? 'line-through' : 'none',
+                          color: item.is_completed ? 'var(--muted)' : 'inherit',
+                          fontWeight: 500,
+                        }}
+                      >
+                        {item.title}
+                      </div>
+                      {item.notes && (
+                        <div style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
+                          {item.notes}
+                        </div>
+                      )}
+                      {item.link && (
+                        <a
+                          href={item.link}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ fontSize: '0.76rem', color: '#2563eb', textDecoration: 'underline' }}
+                        >
+                          {item.link}
+                        </a>
+                      )}
+                    </div>
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      disabled={idx === 0}
+                      title="Move up"
+                      onClick={() => handleMoveChecklistItem(cl.id, item.id, -1)}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      disabled={idx === cl.items.length - 1}
+                      title="Move down"
+                      onClick={() => handleMoveChecklistItem(cl.id, item.id, 1)}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      style={{ color: '#991b1b' }}
+                      title="Delete item"
+                      onClick={() => handleDeleteChecklistItem(item.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
               ))}
-              <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.4rem' }}>
-                <input
-                  className="input"
-                  placeholder="Add step..."
-                  value={newItemText[cl.id] || ''}
-                  onChange={(e) =>
-                    setNewItemText((prev) => ({ ...prev, [cl.id]: e.target.value }))
-                  }
-                />
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  onClick={() => handleAddChecklistItem(cl.id)}
-                >
-                  Add
-                </button>
+              <div style={{ display: 'grid', gap: '0.4rem', marginTop: '0.6rem' }}>
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <input
+                    className="input"
+                    placeholder="Add checklist step..."
+                    value={newItemText[cl.id] || ''}
+                    onChange={(e) =>
+                      setNewItemText((prev) => ({ ...prev, [cl.id]: e.target.value }))
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    onClick={() => handleAddChecklistItem(cl.id)}
+                  >
+                    Add Step
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <input
+                    className="input"
+                    placeholder="Optional notes..."
+                    value={newItemNotes[cl.id] || ''}
+                    onChange={(e) =>
+                      setNewItemNotes((prev) => ({ ...prev, [cl.id]: e.target.value }))
+                    }
+                  />
+                  <input
+                    className="input"
+                    placeholder="Optional reference URL (https://...)"
+                    value={newItemLink[cl.id] || ''}
+                    onChange={(e) =>
+                      setNewItemLink((prev) => ({ ...prev, [cl.id]: e.target.value }))
+                    }
+                  />
+                </div>
               </div>
             </div>
           ))}
         </div>
 
-        {/* COMMENTS SECTION */}
+        {/* THREADED COMMENTS & @MENTIONS SECTION (SRS §7.7) */}
         <div className="card">
-          <h3>Task Discussion &amp; Remarks ({task.comments.length})</h3>
-          <form
-            onSubmit={handleAddComment}
-            style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}
-          >
-            <input
-              className="input"
-              placeholder="Write a remark or update..."
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-            />
-            <button type="submit" className="btn btn-primary btn-sm">
-              Post
-            </button>
-          </form>
-          {task.comments.map((c) => (
+          <h3>Task Discussion, Replies &amp; @Mentions ({task.comments.length})</h3>
+          {replyToId && (
             <div
-              key={c.id}
               style={{
-                padding: '0.6rem 0',
-                borderBottom: '1px solid var(--line)',
-                fontSize: '0.9rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '0.4rem 0.65rem',
+                marginBottom: '0.5rem',
+                borderRadius: '0.4rem',
+                background: '#eff6ff',
+                fontSize: '0.8rem',
               }}
             >
-              <strong>{c.author_name}</strong>{' '}
-              <span style={{ color: 'var(--muted)', fontSize: '0.78rem' }}>
-                · {new Date(c.created_at).toLocaleString()}
+              <span>
+                Replying to{' '}
+                <strong>
+                  {task.comments.find((c) => c.id === replyToId)?.author_name || 'comment'}
+                </strong>
               </span>
-              <div style={{ marginTop: '0.2rem' }}>{c.content}</div>
+              <button type="button" className="btn btn-sm" onClick={() => setReplyToId(null)}>
+                Cancel Reply
+              </button>
             </div>
-          ))}
+          )}
+          <form onSubmit={handleAddComment} style={{ display: 'grid', gap: '0.5rem', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                className="input"
+                placeholder={replyToId ? 'Write a reply...' : 'Write a remark or update...'}
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+              />
+              <button type="submit" className="btn btn-primary btn-sm">
+                {replyToId ? 'Reply' : 'Post'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <select
+                className="select"
+                style={{ width: 'auto', minWidth: '190px', padding: '0.35rem 0.55rem', fontSize: '0.8rem' }}
+                value=""
+                onChange={(e) => {
+                  const uid = e.target.value
+                  if (uid && !mentionUserIds.includes(uid)) {
+                    setMentionUserIds((prev) => [...prev, uid])
+                  }
+                }}
+              >
+                <option value="">+ @Mention employee...</option>
+                {lookup?.users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    @{u.full_name}
+                  </option>
+                ))}
+              </select>
+              {mentionUserIds.map((uid) => {
+                const u = lookup?.users.find((usr) => usr.id === uid)
+                return (
+                  <span
+                    key={uid}
+                    className="badge badge-high"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setMentionUserIds((prev) => prev.filter((i) => i !== uid))}
+                    title="Click to remove mention"
+                  >
+                    @{u?.full_name || 'User'} ×
+                  </span>
+                )
+              })}
+            </div>
+          </form>
+
+          {task.comments
+            .filter((c) => !c.parent_comment)
+            .map((c) => {
+              const replies = task.comments.filter((r) => r.parent_comment === c.id)
+              return (
+                <div
+                  key={c.id}
+                  style={{
+                    padding: '0.7rem 0',
+                    borderBottom: '1px solid var(--line)',
+                    fontSize: '0.88rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <strong>{c.author_name}</strong>{' '}
+                      <span style={{ color: 'var(--muted)', fontSize: '0.76rem' }}>
+                        · {new Date(c.created_at).toLocaleString()}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.3rem' }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => setReplyToId(c.id)}
+                      >
+                        Reply
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => {
+                          setEditingCommentId(c.id)
+                          setEditingCommentText(c.content)
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        style={{ color: '#991b1b' }}
+                        onClick={() => handleDeleteComment(c.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                  {editingCommentId === c.id ? (
+                    <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.4rem' }}>
+                      <input
+                        className="input"
+                        value={editingCommentText}
+                        onChange={(e) => setEditingCommentText(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        onClick={() => handleSaveCommentEdit(c.id)}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => setEditingCommentId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: '0.25rem' }}>{c.content}</div>
+                  )}
+                  {c.mentions && c.mentions.length > 0 && (
+                    <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.3rem', flexWrap: 'wrap' }}>
+                      {c.mentions.map((m) => (
+                        <span key={m.id} className="badge badge-high" style={{ fontSize: '0.72rem' }}>
+                          @{m.mentioned_user_name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {replies.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: '0.5rem',
+                        marginLeft: '1.25rem',
+                        paddingLeft: '0.75rem',
+                        borderLeft: '2px solid var(--line-strong)',
+                      }}
+                    >
+                      {replies.map((r) => (
+                        <div key={r.id} style={{ padding: '0.35rem 0', fontSize: '0.84rem' }}>
+                          <strong>{r.author_name}</strong>{' '}
+                          <span style={{ color: 'var(--muted)', fontSize: '0.74rem' }}>
+                            · {new Date(r.created_at).toLocaleString()}
+                          </span>
+                          <div>{r.content}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
         </div>
       </div>
     </div>
