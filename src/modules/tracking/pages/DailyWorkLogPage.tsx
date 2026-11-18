@@ -1,4 +1,4 @@
-﻿import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { type LookupData, type Project, projectsApi } from '@/modules/projects/api'
 import { type Task, tasksApi } from '@/modules/tasks/api'
@@ -38,6 +38,7 @@ export function Page() {
   const [blockers, setBlockers] = useState('')
   const [markTaskBlocked, setMarkTaskBlocked] = useState(false)
   const [blockerImpact, setBlockerImpact] = useState<'Low' | 'Medium' | 'High' | 'Critical'>('High')
+  const [updateFiles, setUpdateFiles] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
 
   async function loadWorkLogs() {
@@ -92,6 +93,14 @@ export function Page() {
     setError(null)
     setSuccess(null)
     try {
+      let uploadedIds: string[] = []
+      if (updateFiles.length > 0) {
+        const upRes = await tasksApi.uploadFiles(updateFiles, {
+          task: selectedTaskId,
+          uploaded_by: selectedAuthorId || undefined,
+        })
+        uploadedIds = upRes.attachments.map((a) => a.id)
+      }
       await trackingApi.createProgressUpdate({
         task: selectedTaskId,
         author: selectedAuthorId || undefined,
@@ -102,6 +111,7 @@ export function Page() {
         remarks: remarks.trim() || null,
         next_action: nextAction.trim() || null,
         blockers: blockers.trim() || null,
+        attachment_ids: uploadedIds,
         mark_task_blocked: blockers.trim() ? markTaskBlocked : false,
         blocker_impact: blockerImpact,
       })
@@ -112,6 +122,7 @@ export function Page() {
       setBlockers('')
       setTimeSpentMins('')
       setMarkTaskBlocked(false)
+      setUpdateFiles([])
       const refreshedTasks = await tasksApi.listTasks()
       setTasks(refreshedTasks)
       await loadWorkLogs()
@@ -383,7 +394,28 @@ export function Page() {
           </div>
         </div>
 
-        <div className="btn-row" style={{ marginTop: '0.9rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+            marginTop: '0.9rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--muted)' }}>
+              Attach Media / Files (SRS §9.1):
+            </label>
+            <input
+              type="file"
+              multiple
+              accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.mp4,.webm,.mov,.zip"
+              style={{ fontSize: '0.8rem' }}
+              onChange={(e) => setUpdateFiles(Array.from(e.target.files || []))}
+            />
+          </div>
           <button type="submit" className="btn btn-primary" disabled={submitting}>
             {submitting ? 'Submitting...' : '+ Record Daily Work Update'}
           </button>
@@ -618,6 +650,24 @@ export function Page() {
                     }}
                   >
                     <strong>Blocker:</strong> {pu.blockers}
+                  </div>
+                )}
+
+                {pu.attachments && pu.attachments.length > 0 && (
+                  <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                    {pu.attachments.map((pa) =>
+                      pa.attachment_detail ? (
+                        <a
+                          key={pa.id}
+                          href={tasksApi.getAttachmentUrl(pa.attachment_detail.id, false)}
+                          download={pa.attachment_detail.file_name}
+                          className="badge"
+                          style={{ textDecoration: 'none', fontSize: '0.75rem' }}
+                        >
+                          📎 {pa.attachment_detail.file_name}
+                        </a>
+                      ) : null,
+                    )}
                   </div>
                 )}
               </div>

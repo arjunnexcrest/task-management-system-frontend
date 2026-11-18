@@ -103,6 +103,34 @@ export interface Checklist {
   completion_percentage: number
 }
 
+export interface AttachmentDetail {
+  id: string
+  uploaded_by: string
+  uploaded_by_name: string
+  file_name: string
+  download_url: string
+  preview_url: string
+  file_category: 'image' | 'video' | 'document' | 'archive'
+  mime_type: string
+  file_size_bytes: number
+  checksum: string | null
+  uploaded_at: string
+}
+
+export interface TaskAttachmentItem {
+  id: string
+  task: string
+  attachment: string
+  attachment_detail: AttachmentDetail
+}
+
+export interface CommentAttachmentItem {
+  id: string
+  comment: string
+  attachment: string
+  attachment_detail: AttachmentDetail
+}
+
 export interface TaskComment {
   id: string
   task: string
@@ -116,6 +144,7 @@ export interface TaskComment {
     mentioned_user: string
     mentioned_user_name: string
   }>
+  attachments?: CommentAttachmentItem[]
   replies_count?: number
   created_at: string
   updated_at: string | null
@@ -190,6 +219,7 @@ export interface TaskDetail extends Task {
   checklists: Checklist[]
   comments: TaskComment[]
   progress_updates?: ProgressUpdateItem[]
+  task_attachments?: TaskAttachmentItem[]
 }
 
 export const tasksApi = {
@@ -375,6 +405,7 @@ export const tasksApi = {
     content: string
     parent_comment?: string | null
     mentioned_user_ids?: string[]
+    attachment_ids?: string[]
     author?: string
   }) =>
     request<TaskComment>('/tasks/comments/', {
@@ -405,6 +436,46 @@ export const tasksApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  uploadFiles: async (
+    files: File[],
+    options?: {
+      task?: string
+      comment?: string
+      progress_update?: string
+      uploaded_by?: string
+    },
+  ) => {
+    const formData = new FormData()
+    files.forEach((f) => formData.append('files', f))
+    if (options?.task) formData.append('task', options.task)
+    if (options?.comment) formData.append('comment', options.comment)
+    if (options?.progress_update) formData.append('progress_update', options.progress_update)
+    if (options?.uploaded_by) formData.append('uploaded_by', options.uploaded_by)
+
+    const res = await fetch(`${BASE_URL}/tasks/attachments/upload/`, {
+      method: 'POST',
+      body: formData,
+    })
+    if (!res.ok) {
+      const errText = await res.text()
+      throw new Error(errText || `HTTP error ${res.status}`)
+    }
+    return res.json() as Promise<{ uploaded_count: number; attachments: AttachmentDetail[] }>
+  },
+
+  deleteAttachment: (attachmentId: string) =>
+    request<void>(`/tasks/attachments/${attachmentId}/`, {
+      method: 'DELETE',
+    }),
+
+  deleteTaskAttachment: (taskAttachmentId: string) =>
+    request<void>(`/tasks/task-attachments/${taskAttachmentId}/`, {
+      method: 'DELETE',
+    }),
+
+  getAttachmentUrl: (attachmentId: string, inline = false) =>
+    `${BASE_URL}/tasks/attachments/${attachmentId}/download/${inline ? '?inline=1' : ''}`,
 
   getKanban: (projectId?: string) => {
     const query = projectId ? `?project=${projectId}` : ''

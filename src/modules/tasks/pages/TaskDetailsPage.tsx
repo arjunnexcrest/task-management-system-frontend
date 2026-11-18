@@ -2,7 +2,20 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { type LookupData, projectsApi } from '@/modules/projects/api'
-import { type Task, type TaskDetail, tasksApi } from '@/modules/tasks/api'
+import {
+  type AttachmentDetail,
+  type Task,
+  type TaskAttachmentItem,
+  type TaskDetail,
+  tasksApi,
+} from '@/modules/tasks/api'
+
+function formatFileSize(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
 
 const TASK_STATUSES: Task['status'][] = [
   'Backlog',
@@ -82,6 +95,17 @@ export function Page() {
   const [progMarkBlocked, setProgMarkBlocked] = useState(false)
   const [progBlockerImpact, setProgBlockerImpact] = useState<'Low' | 'Medium' | 'High' | 'Critical'>('High')
   const [progSaving, setProgSaving] = useState(false)
+  const [progFiles, setProgFiles] = useState<File[]>([])
+
+  // Media Attachments & Viewer State (SRS §7.8 & Screen #32)
+  const [taskUploadFiles, setTaskUploadFiles] = useState<File[]>([])
+  const [uploadingFiles, setUploadingFiles] = useState(false)
+  const [commentFiles, setCommentFiles] = useState<File[]>([])
+  const [previewAttachment, setPreviewAttachment] = useState<AttachmentDetail | null>(null)
+  const [taskAttachmentToDelete, setTaskAttachmentToDelete] = useState<TaskAttachmentItem | null>(
+    null,
+  )
+  const [deletingAttachment, setDeletingAttachment] = useState(false)
 
   async function refresh() {
     if (!id) return
@@ -269,17 +293,29 @@ export function Page() {
 
   async function handleAddComment(e: FormEvent) {
     e.preventDefault()
-    if (!id || !commentText.trim()) return
-    await tasksApi.addComment({
-      task: id,
-      content: commentText.trim(),
-      parent_comment: replyToId,
-      mentioned_user_ids: mentionUserIds,
-    })
-    setCommentText('')
-    setReplyToId(null)
-    setMentionUserIds([])
-    await refresh()
+    if (!id || (!commentText.trim() && commentFiles.length === 0)) return
+    setPageError(null)
+    try {
+      let uploadedIds: string[] = []
+      if (commentFiles.length > 0) {
+        const upRes = await tasksApi.uploadFiles(commentFiles, { task: id })
+        uploadedIds = upRes.attachments.map((a) => a.id)
+      }
+      await tasksApi.addComment({
+        task: id,
+        content: commentText.trim() || `Attached ${commentFiles.length} file(s).`,
+        parent_comment: replyToId,
+        mentioned_user_ids: mentionUserIds,
+        attachment_ids: uploadedIds,
+      })
+      setCommentText('')
+      setReplyToId(null)
+      setMentionUserIds([])
+      setCommentFiles([])
+      await refresh()
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'Failed to post comment')
+    }
   }
 
   async function handleSaveCommentEdit(commentId: string) {
@@ -340,6 +376,14 @@ export function Page() {
     setPageError(null)
     setPageSuccess(null)
     try {
+      let uploadedIds: string[] = []
+      if (progFiles.length > 0) {
+        const upRes = await tasksApi.uploadFiles(progFiles, {
+          task: task.id,
+          uploaded_by: progAuthor || undefined,
+        })
+        uploadedIds = upRes.attachments.map((a) => a.id)
+      }
       await tasksApi.addProgressUpdate(task.id, {
         author: progAuthor || undefined,
         progress_percentage: Number(progPct),
@@ -349,6 +393,7 @@ export function Page() {
         blockers: progBlockers.trim() || null,
         time_spent_minutes: progTimeSpent ? Number(progTimeSpent) : null,
         next_action: progNextAction.trim() || null,
+        attachment_ids: uploadedIds,
         mark_task_blocked: progBlockers.trim() ? progMarkBlocked : false,
         blocker_impact: progBlockerImpact,
       })
@@ -359,12 +404,51 @@ export function Page() {
       setProgTimeSpent('')
       setProgNextAction('')
       setProgMarkBlocked(false)
+      setProgFiles([])
       await refresh()
       setPageSuccess('Progress update and remarks recorded in progress_updates history.')
     } catch (err) {
       setPageError(err instanceof Error ? err.message : 'Failed to submit progress update')
     } finally {
       setProgSaving(false)
+    }
+  }
+
+  async function handleUploadTaskFiles(e: FormEvent) {
+    e.preventDefault()
+    if (!task || taskUploadFiles.length === 0) return
+    setUploadingFiles(true)
+    setPageError(null)
+    setPageSuccess(null)
+    try {
+      const res = await tasksApi.uploadFiles(taskUploadFiles, { task: task.id })
+      setTaskUploadFiles([])
+      await refresh()
+      setPageSuccess(
+        `Successfully uploaded and validated ${res.uploaded_count} file(s) (SRS §7.8).`,
+      )
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'File upload failed')
+    } finally {
+      setUploadingFiles(false)
+    }
+  }
+
+  async function confirmDeleteTaskAttachment() {
+    if (!taskAttachmentToDelete) return
+    setDeletingAttachment(true)
+    setPageError(null)
+    setPageSuccess(null)
+    try {
+      await tasksApi.deleteTaskAttachment(taskAttachmentToDelete.id)
+      setTaskAttachmentToDelete(null)
+      await refresh()
+      setPageSuccess('Attachment deleted and storage cleaned up.')
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'Failed to delete attachment')
+      setTaskAttachmentToDelete(null)
+    } finally {
+      setDeletingAttachment(false)
     }
   }
 
@@ -1266,6 +1350,13 @@ export function Page() {
                   </span>
                 )
               })}
+              <input
+                type="file"
+                multiple
+                accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.mp4,.webm,.mov,.zip"
+                style={{ fontSize: '0.78rem' }}
+                onChange={(e) => setCommentFiles(Array.from(e.target.files || []))}
+              />
             </div>
           </form>
 
@@ -1348,6 +1439,22 @@ export function Page() {
                         <span key={m.id} className="badge badge-high" style={{ fontSize: '0.72rem' }}>
                           @{m.mentioned_user_name}
                         </span>
+                      ))}
+                    </div>
+                  )}
+                  {c.attachments && c.attachments.length > 0 && (
+                    <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+                      {c.attachments.map((ca) => (
+                        <a
+                          key={ca.id}
+                          href={tasksApi.getAttachmentUrl(ca.attachment_detail.id, false)}
+                          download={ca.attachment_detail.file_name}
+                          className="badge"
+                          style={{ textDecoration: 'none', fontSize: '0.74rem' }}
+                        >
+                          📎 {ca.attachment_detail.file_name} (
+                          {formatFileSize(ca.attachment_detail.file_size_bytes)})
+                        </a>
                       ))}
                     </div>
                   )}
@@ -1623,7 +1730,28 @@ export function Page() {
             </div>
           </div>
 
-          <div className="btn-row" style={{ marginTop: '0.85rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              marginTop: '0.85rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--muted)' }}>
+                Attach Media / Deliverables (`progress_attachments`):
+              </label>
+              <input
+                type="file"
+                multiple
+                accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.mp4,.webm,.mov,.zip"
+                style={{ fontSize: '0.8rem' }}
+                onChange={(e) => setProgFiles(Array.from(e.target.files || []))}
+              />
+            </div>
             <button type="submit" className="btn btn-primary btn-sm" disabled={progSaving}>
               {progSaving ? 'Recording Update...' : '+ Submit Progress Update & Remarks'}
             </button>
@@ -1727,6 +1855,25 @@ export function Page() {
                   <strong>Blocker:</strong> {pu.blockers}
                 </div>
               )}
+
+              {pu.attachments && pu.attachments.length > 0 && (
+                <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                  {pu.attachments.map((pa) =>
+                    pa.attachment_detail ? (
+                      <a
+                        key={pa.id}
+                        href={tasksApi.getAttachmentUrl(pa.attachment_detail.id, false)}
+                        download={pa.attachment_detail.file_name}
+                        className="badge"
+                        style={{ textDecoration: 'none', fontSize: '0.75rem' }}
+                      >
+                        📎 {pa.attachment_detail.file_name} (
+                        {formatFileSize(pa.attachment_detail.file_size_bytes)})
+                      </a>
+                    ) : null,
+                  )}
+                </div>
+              )}
             </div>
           ))}
           {(task.progress_updates || []).length === 0 && (
@@ -1737,6 +1884,318 @@ export function Page() {
           )}
         </div>
       </div>
+
+      {/* MEDIA ATTACHMENTS & DOCUMENT VIEWER SECTION (SRS §7.8 & Screen #32) */}
+      <div className="card" style={{ marginTop: '1.25rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+            marginBottom: '1rem',
+          }}
+        >
+          <div>
+            <p className="eyebrow">
+              SRS §7.8 &amp; DB Design §4.5 · Document Storage, Validation, Download &amp; Delete
+            </p>
+            <h2 style={{ margin: 0 }}>
+              Media Attachments &amp; Document Viewer ({(task.task_attachments || []).length})
+            </h2>
+          </div>
+          <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+            Supported: Images (JPG/PNG/WEBP), Docs (PDF/DOCX/XLSX/PPTX/TXT), Video (MP4), Archives (ZIP)
+          </span>
+        </div>
+
+        {/* Multi-File Upload Form */}
+        <form
+          onSubmit={handleUploadTaskFiles}
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+            alignItems: 'center',
+            padding: '0.9rem 1rem',
+            borderRadius: '0.6rem',
+            background: '#f8fafc',
+            border: '1px dashed var(--line-strong)',
+            marginBottom: '1.25rem',
+          }}
+        >
+          <input
+            type="file"
+            multiple
+            accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.mp4,.webm,.mov,.zip"
+            style={{ flex: '1 1 260px', fontSize: '0.85rem' }}
+            onChange={(e) => setTaskUploadFiles(Array.from(e.target.files || []))}
+          />
+          {taskUploadFiles.length > 0 && (
+            <span style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>
+              {taskUploadFiles.length} file(s) selected (
+              {formatFileSize(taskUploadFiles.reduce((acc, f) => acc + f.size, 0))})
+            </span>
+          )}
+          <button
+            type="submit"
+            className="btn btn-primary btn-sm"
+            disabled={uploadingFiles || taskUploadFiles.length === 0}
+          >
+            {uploadingFiles ? 'Uploading & Validating...' : '+ Upload Attachment(s)'}
+          </button>
+        </form>
+
+        {/* Attachment Cards Grid */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
+            gap: '0.9rem',
+          }}
+        >
+          {(task.task_attachments || []).map((ta) => {
+            const att = ta.attachment_detail
+            const inlineUrl = tasksApi.getAttachmentUrl(att.id, true)
+            const downloadUrl = tasksApi.getAttachmentUrl(att.id, false)
+            return (
+              <div
+                key={ta.id}
+                style={{
+                  border: '1px solid var(--line)',
+                  borderRadius: '0.6rem',
+                  padding: '0.9rem',
+                  background: '#ffffff',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  gap: '0.65rem',
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                      gap: '0.5rem',
+                      marginBottom: '0.4rem',
+                    }}
+                  >
+                    <strong style={{ fontSize: '0.9rem', wordBreak: 'break-word' }}>
+                      {att.file_name}
+                    </strong>
+                    <span className="badge badge-active" style={{ textTransform: 'uppercase' }}>
+                      {att.file_category || 'file'}
+                    </span>
+                  </div>
+
+                  {/* Inline Image Thumbnail or Video Player (SRS §7.8) */}
+                  {att.file_category === 'image' && (
+                    <div
+                      style={{
+                        marginBottom: '0.5rem',
+                        borderRadius: '0.45rem',
+                        overflow: 'hidden',
+                        border: '1px solid var(--line)',
+                        background: '#f8fafc',
+                        maxHeight: '150px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => setPreviewAttachment(att)}
+                    >
+                      <img
+                        src={inlineUrl}
+                        alt={att.file_name}
+                        style={{ maxHeight: '150px', maxWidth: '100%', objectFit: 'contain' }}
+                      />
+                    </div>
+                  )}
+
+                  {att.file_category === 'video' && (
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <video
+                        controls
+                        preload="metadata"
+                        style={{ width: '100%', maxHeight: '160px', borderRadius: '0.45rem' }}
+                      >
+                        <source src={inlineUrl} type={att.mime_type} />
+                      </video>
+                    </div>
+                  )}
+
+                  <div style={{ fontSize: '0.78rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    <div>
+                      Size: <strong>{formatFileSize(att.file_size_bytes)}</strong> · MIME:{' '}
+                      <code>{att.mime_type}</code>
+                    </div>
+                    <div>
+                      Uploaded by <strong>{att.uploaded_by_name}</strong> on{' '}
+                      {new Date(att.uploaded_at).toLocaleString()}
+                    </div>
+                    {att.checksum && (
+                      <div title={`SHA-256: ${att.checksum}`}>
+                        SHA-256: <code>{att.checksum.slice(0, 16)}...</code>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="btn-row" style={{ gap: '0.4rem', marginTop: '0.25rem' }}>
+                  {(att.file_category === 'image' ||
+                    att.file_category === 'video' ||
+                    att.mime_type === 'application/pdf' ||
+                    att.mime_type.startsWith('text/')) && (
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() => setPreviewAttachment(att)}
+                    >
+                      Preview
+                    </button>
+                  )}
+                  <a
+                    href={downloadUrl}
+                    download={att.file_name}
+                    className="btn btn-sm btn-primary"
+                    style={{ textDecoration: 'none' }}
+                  >
+                    Download
+                  </a>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    style={{ color: '#991b1b', borderColor: '#fecaca' }}
+                    onClick={() => setTaskAttachmentToDelete(ta)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {(task.task_attachments || []).length === 0 && (
+          <p style={{ color: 'var(--muted)', fontSize: '0.86rem', margin: 0 }}>
+            No files attached to this task yet. Upload images, PDFs, Office documents, videos, or ZIP
+            archives above.
+          </p>
+        )}
+      </div>
+
+      {/* ATTACHMENT VIEWER / PREVIEW MODAL (Screen #32 — SRS §7.8 & §25) */}
+      {previewAttachment && (
+        <div className="modal-backdrop" onClick={() => setPreviewAttachment(null)}>
+          <div
+            className="modal-card"
+            style={{ maxWidth: '760px', width: '92%' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '0.85rem',
+              }}
+            >
+              <div>
+                <h3 className="modal-title" style={{ margin: 0 }}>
+                  {previewAttachment.file_name}
+                </h3>
+                <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
+                  {formatFileSize(previewAttachment.file_size_bytes)} ·{' '}
+                  {previewAttachment.mime_type} · Uploaded by {previewAttachment.uploaded_by_name}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => setPreviewAttachment(null)}
+              >
+                Close ×
+              </button>
+            </div>
+
+            <div
+              style={{
+                borderRadius: '0.5rem',
+                border: '1px solid var(--line)',
+                background: '#f8fafc',
+                padding: '0.75rem',
+                maxHeight: '68vh',
+                overflow: 'auto',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              {previewAttachment.file_category === 'image' ? (
+                <img
+                  src={tasksApi.getAttachmentUrl(previewAttachment.id, true)}
+                  alt={previewAttachment.file_name}
+                  style={{ maxWidth: '100%', maxHeight: '62vh', objectFit: 'contain' }}
+                />
+              ) : previewAttachment.file_category === 'video' ? (
+                <video
+                  controls
+                  autoPlay
+                  style={{ width: '100%', maxHeight: '62vh', borderRadius: '0.4rem' }}
+                >
+                  <source
+                    src={tasksApi.getAttachmentUrl(previewAttachment.id, true)}
+                    type={previewAttachment.mime_type}
+                  />
+                </video>
+              ) : (
+                <iframe
+                  title={previewAttachment.file_name}
+                  src={tasksApi.getAttachmentUrl(previewAttachment.id, true)}
+                  style={{ width: '100%', height: '60vh', border: 'none' }}
+                />
+              )}
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: '1rem' }}>
+              <a
+                href={tasksApi.getAttachmentUrl(previewAttachment.id, false)}
+                download={previewAttachment.file_name}
+                className="btn btn-primary btn-sm"
+                style={{ textDecoration: 'none' }}
+              >
+                Download Original File
+              </a>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => setPreviewAttachment(null)}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE ATTACHMENT CONFIRMATION MODAL */}
+      <ConfirmDialog
+        open={Boolean(taskAttachmentToDelete)}
+        title="Delete Attachment"
+        message={
+          taskAttachmentToDelete
+            ? `Are you sure you want to delete "${taskAttachmentToDelete.attachment_detail.file_name}"? This will unlink the file and remove it from storage.`
+            : ''
+        }
+        confirmLabel="Delete Attachment"
+        loading={deletingAttachment}
+        onConfirm={confirmDeleteTaskAttachment}
+        onCancel={() => !deletingAttachment && setTaskAttachmentToDelete(null)}
+      />
 
       <ConfirmDialog
         open={showDeleteConfirm}
