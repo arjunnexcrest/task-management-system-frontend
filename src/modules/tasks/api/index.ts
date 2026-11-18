@@ -1,4 +1,5 @@
 import { env } from '@/config/env'
+import type { ApprovalChainInfo, ReviewSlaInfo, TaskReviewItem } from '@/modules/reviews/api'
 import type { CreateProgressUpdatePayload, ProgressUpdateItem } from '@/modules/tracking/api'
 
 const BASE_URL = `${env.apiBaseUrl}/api`
@@ -13,6 +14,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   })
   if (!res.ok) {
     const errText = await res.text()
+    try {
+      const parsed = JSON.parse(errText)
+      if (parsed.error) throw new Error(typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error))
+      if (parsed.detail) throw new Error(typeof parsed.detail === 'string' ? parsed.detail : JSON.stringify(parsed.detail))
+    } catch (inner) {
+      if (inner instanceof Error && inner.message && !inner.message.startsWith('Unexpected token') && !inner.message.startsWith('JSON')) {
+        throw inner
+      }
+    }
     throw new Error(errText || `HTTP error ${res.status}`)
   }
   if (res.status === 204) {
@@ -219,6 +229,9 @@ export interface TaskDetail extends Task {
   checklists: Checklist[]
   comments: TaskComment[]
   progress_updates?: ProgressUpdateItem[]
+  reviews?: TaskReviewItem[]
+  approval_chain?: ApprovalChainInfo
+  review_sla?: ReviewSlaInfo
   task_attachments?: TaskAttachmentItem[]
 }
 

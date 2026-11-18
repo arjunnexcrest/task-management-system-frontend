@@ -2,6 +2,13 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { type LookupData, projectsApi } from '@/modules/projects/api'
+import { ApprovalChainStepper } from '@/modules/reviews/components/ApprovalChainStepper'
+import {
+  ApprovalChainConfigModal,
+  ReassignReviewerModal,
+  ReviewDecisionModal,
+  SubmitForReviewModal,
+} from '@/modules/reviews/components/ReviewModals'
 import {
   type AttachmentDetail,
   type Task,
@@ -106,6 +113,14 @@ export function Page() {
     null,
   )
   const [deletingAttachment, setDeletingAttachment] = useState(false)
+
+  // Review, Approval & Correction State (SRS §14.1–§14.4)
+  const [reviewModalDecision, setReviewModalDecision] = useState<
+    'Approved' | 'Changes Requested' | 'Rejected' | null
+  >(null)
+  const [showSubmitReviewModal, setShowSubmitReviewModal] = useState(false)
+  const [showReassignReviewerModal, setShowReassignReviewerModal] = useState(false)
+  const [showTaskChainModal, setShowTaskChainModal] = useState(false)
 
   async function refresh() {
     if (!id) return
@@ -2087,6 +2102,291 @@ export function Page() {
           </p>
         )}
       </div>
+
+      {/* REVIEW, APPROVAL CHAIN & CORRECTION HISTORY (SRS §14.1–§14.4) */}
+      <div className="card" style={{ marginTop: '1.25rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+            marginBottom: '1rem',
+          }}
+        >
+          <div>
+            <p className="eyebrow">
+              SRS §14.1–§14.4 &amp; DB Design §4.6 · Immutable Approval &amp; Correction Log (`task_reviews`)
+            </p>
+            <h2 style={{ margin: 0 }}>
+              Review &amp; Approval Workflow ({(task.reviews || []).length} Round
+              {(task.reviews || []).length === 1 ? '' : 's'})
+            </h2>
+          </div>
+
+          <div className="btn-row" style={{ flexWrap: 'wrap' }}>
+            {task.status !== 'Completed' && task.status !== 'Cancelled' && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowSubmitReviewModal(true)}
+              >
+                {task.status === 'Changes Requested'
+                  ? '↺ Resubmit for Review'
+                  : task.status === 'In Review'
+                    ? 'Update Submission / Reviewer'
+                    : '→ Submit for Review'}
+              </button>
+            )}
+            {task.status === 'In Review' && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setReviewModalDecision('Approved')}
+                >
+                  ✓ Approve / Decide
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => setReviewModalDecision('Changes Requested')}
+                >
+                  ↺ Request Corrections
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  style={{ color: '#991b1b', borderColor: '#fecaca' }}
+                  onClick={() => setReviewModalDecision('Rejected')}
+                >
+                  ✕ Reject Work
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => setShowReassignReviewerModal(true)}
+                >
+                  ⇄ Reassign Reviewer
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setShowTaskChainModal(true)}
+            >
+              ⚙ Approval Chain Policy
+            </button>
+            <Link to="/reviews" className="btn btn-sm">
+              Review Queue →
+            </Link>
+          </div>
+        </div>
+
+        {task.approval_chain && (
+          <div
+            style={{
+              padding: '0.85rem 1rem',
+              borderRadius: '0.6rem',
+              background: '#f8fafc',
+              border: '1px solid var(--line)',
+              marginBottom: '1rem',
+            }}
+          >
+            <ApprovalChainStepper chain={task.approval_chain} sla={task.review_sla} />
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gap: '0.7rem' }}>
+          {(task.reviews || []).map((rev) => {
+            const isApproved = rev.decision === 'Approved'
+            const isRejected = rev.decision === 'Rejected'
+            return (
+              <div
+                key={rev.id}
+                style={{
+                  padding: '0.85rem 1rem',
+                  borderRadius: '0.55rem',
+                  border: isApproved
+                    ? '1px solid #a7f3d0'
+                    : isRejected
+                      ? '1px solid #fecaca'
+                      : '1px solid #fde68a',
+                  background: isApproved ? '#f0fdf4' : isRejected ? '#fef2f2' : '#fffbeb',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                    <span className="badge">Round #{rev.review_round}</span>
+                    <span
+                      className={
+                        isApproved
+                          ? 'badge badge-approved'
+                          : isRejected
+                            ? 'badge badge-critical'
+                            : 'badge badge-medium'
+                      }
+                    >
+                      {rev.decision}
+                    </span>
+                    <strong>{rev.reviewer_name}</strong>
+                    {rev.reviewer_designation && (
+                      <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
+                        ({rev.reviewer_designation})
+                      </span>
+                    )}
+                  </div>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
+                    {new Date(rev.reviewed_at).toLocaleString()}
+                  </span>
+                </div>
+
+                {rev.correction_reason && (
+                  <div
+                    style={{
+                      marginTop: '0.45rem',
+                      padding: '0.45rem 0.65rem',
+                      borderRadius: '0.4rem',
+                      background: '#ffffff',
+                      border: '1px solid #fecaca',
+                      color: '#991b1b',
+                      fontSize: '0.83rem',
+                    }}
+                  >
+                    <strong>Correction / Rejection Reason:</strong> {rev.correction_reason}
+                  </div>
+                )}
+
+                {rev.comments && (
+                  <div style={{ marginTop: '0.4rem', fontSize: '0.85rem', color: 'var(--ink)' }}>
+                    {rev.comments}
+                  </div>
+                )}
+
+                {rev.reference_attachments && rev.reference_attachments.length > 0 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '0.45rem',
+                      marginTop: '0.5rem',
+                    }}
+                  >
+                    {rev.reference_attachments.map((att) => (
+                      <span
+                        key={att.id}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+                      >
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          style={{ fontSize: '0.74rem', padding: '0.2rem 0.5rem' }}
+                          onClick={() => setPreviewAttachment(att)}
+                        >
+                          👁 {att.file_name}
+                        </button>
+                        <a
+                          href={tasksApi.getAttachmentUrl(att.id, false)}
+                          download={att.file_name}
+                          className="btn btn-sm"
+                          style={{
+                            fontSize: '0.74rem',
+                            padding: '0.2rem 0.45rem',
+                            textDecoration: 'none',
+                          }}
+                        >
+                          ↓
+                        </a>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {(task.reviews || []).length === 0 && (
+            <p style={{ color: 'var(--muted)', fontSize: '0.86rem', margin: 0 }}>
+              No review rounds have been recorded on this task yet. Use &quot;Submit for Review&quot;
+              above to initiate the review and approval workflow.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Review & Approval Modals */}
+      {reviewModalDecision && (
+        <ReviewDecisionModal
+          open
+          taskId={task.id}
+          taskTitle={task.title}
+          projectCode={task.project_code}
+          defaultReviewerId={
+            task.approval_chain?.current_reviewer_id || task.reviewer || lookup?.users[0]?.id
+          }
+          users={lookup?.users || []}
+          initialDecision={reviewModalDecision}
+          onClose={() => setReviewModalDecision(null)}
+          onSuccess={async (msg) => {
+            setReviewModalDecision(null)
+            await refresh()
+            setPageSuccess(msg)
+          }}
+        />
+      )}
+
+      <SubmitForReviewModal
+        open={showSubmitReviewModal}
+        taskId={task.id}
+        taskTitle={task.title}
+        defaultReviewerId={task.reviewer}
+        defaultApprovalRequired={task.approval_required}
+        users={lookup?.users || []}
+        onClose={() => setShowSubmitReviewModal(false)}
+        onSuccess={async (msg) => {
+          setShowSubmitReviewModal(false)
+          await refresh()
+          setPageSuccess(msg)
+        }}
+      />
+
+      <ReassignReviewerModal
+        open={showReassignReviewerModal}
+        taskId={task.id}
+        taskTitle={task.title}
+        currentReviewerId={task.reviewer}
+        users={lookup?.users || []}
+        onClose={() => setShowReassignReviewerModal(false)}
+        onSuccess={async (msg) => {
+          setShowReassignReviewerModal(false)
+          await refresh()
+          setPageSuccess(msg)
+        }}
+      />
+
+      <ApprovalChainConfigModal
+        open={showTaskChainModal}
+        companies={lookup?.companies || []}
+        projects={[]}
+        initialTaskId={task.id}
+        initialTaskTitle={task.title}
+        onClose={() => setShowTaskChainModal(false)}
+        onSuccess={async (msg) => {
+          setShowTaskChainModal(false)
+          await refresh()
+          setPageSuccess(msg)
+        }}
+      />
 
       {/* ATTACHMENT VIEWER / PREVIEW MODAL (Screen #32 — SRS §7.8 & §25) */}
       {previewAttachment && (
