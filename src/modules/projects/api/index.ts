@@ -135,6 +135,8 @@ export interface MilestoneDependency {
   milestone: string
   depends_on_milestone: string
   depends_on_title: string
+  depends_on_status?: string
+  depends_on_target_date?: string | null
 }
 
 export interface ProjectMilestone {
@@ -149,6 +151,8 @@ export interface ProjectMilestone {
   status: 'Pending' | 'In Progress' | 'Completed' | 'Delayed'
   approval_required: boolean
   progress: string | number
+  is_overdue?: boolean
+  days_remaining?: number | null
   milestone_tasks: MilestoneTask[]
   dependencies: MilestoneDependency[]
 }

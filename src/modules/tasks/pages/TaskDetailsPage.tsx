@@ -13,6 +13,7 @@ import {
   type AttachmentDetail,
   type Task,
   type TaskAttachmentItem,
+  type TaskDependency,
   type TaskDetail,
   tasksApi,
 } from '@/modules/tasks/api'
@@ -66,13 +67,16 @@ export function Page() {
   const [schedReason, setSchedReason] = useState('')
   const [schedSaving, setSchedSaving] = useState(false)
 
-  // Workflow Transition State (SRS §7.3 & §22)
+  // Workflow Transition State (SRS §7.3, §7.9 & §22)
   const [transitionReason, setTransitionReason] = useState('')
   const [overrideSubtasks, setOverrideSubtasks] = useState(false)
+  const [overrideDependencies, setOverrideDependencies] = useState(false)
   const [overrideReason, setOverrideReason] = useState('')
 
-  // Dependency State
+  // Dependency State (SRS §7.9)
   const [selectedPrereqTask, setSelectedPrereqTask] = useState('')
+  const [selectedDepType, setSelectedDepType] =
+    useState<TaskDependency['dependency_type']>('Finish-to-Start')
 
   // Checklist & Comment State
   const [newChecklistTitle, setNewChecklistTitle] = useState('')
@@ -206,10 +210,13 @@ export function Page() {
       await tasksApi.transitionStatus(id, newStatus, {
         reason: transitionReason.trim() || undefined,
         override_subtasks: overrideSubtasks,
-        override_reason: overrideSubtasks ? overrideReason.trim() || undefined : undefined,
+        override_dependencies: overrideDependencies,
+        override_reason:
+          overrideSubtasks || overrideDependencies ? overrideReason.trim() || undefined : undefined,
       })
       setTransitionReason('')
       setOverrideSubtasks(false)
+      setOverrideDependencies(false)
       setOverrideReason('')
       await refresh()
       setPageSuccess(`Task status transitioned to "${newStatus}" (workflow validated).`)
@@ -237,14 +244,15 @@ export function Page() {
     e.preventDefault()
     if (!id || !selectedPrereqTask) return
     setPageError(null)
+    setPageSuccess(null)
     try {
       await tasksApi.addDependency({
         task: id,
         depends_on_task: selectedPrereqTask,
-        dependency_type: 'Finish-to-Start',
+        dependency_type: selectedDepType,
       })
       await refresh()
-      setPageSuccess('Prerequisite dependency linked.')
+      setPageSuccess(`Prerequisite dependency (${selectedDepType}) linked.`)
     } catch (err) {
       setPageError(err instanceof Error ? err.message : 'Failed to add dependency')
     }
@@ -566,17 +574,56 @@ export function Page() {
         </div>
       )}
 
+      {task.is_dependency_blocked && (task.dependency_summary?.blocking_prerequisites?.length || 0) > 0 && (
+        <div
+          style={{
+            background: '#fffbeb',
+            border: '1px solid #fde68a',
+            color: '#92400e',
+            padding: '0.8rem 1rem',
+            borderRadius: '0.55rem',
+            marginBottom: '1rem',
+            fontSize: '0.86rem',
+          }}
+        >
+          <strong>Blocked by Prerequisite Dependencies (SRS §7.9):</strong>{' '}
+          {task.dependency_summary!.blocking_prerequisites.map((bp, idx) => (
+            <span key={bp.dependency_id}>
+              {idx > 0 ? ', ' : ''}
+              <Link to={`/tasks/${bp.depends_on_task_id}`} style={{ color: '#92400e', fontWeight: 700 }}>
+                {bp.depends_on_title}
+              </Link>{' '}
+              ({bp.dependency_type} · {bp.depends_on_status}
+              {bp.is_overdue ? ' · Overdue' : ''})
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-label">Status &amp; Priority</div>
           <div className="stat-value" style={{ fontSize: '1.15rem' }}>
             {task.status} · {task.priority}
           </div>
-          {task.is_overdue && (
-            <span className="badge badge-critical" style={{ marginTop: '0.25rem' }}>
-              Overdue
-            </span>
-          )}
+          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+            {task.is_overdue && (
+              <span className="badge badge-critical">
+                Overdue {task.days_overdue ?? Math.abs(task.days_remaining || 0)}d
+                {task.overdue_severity && task.overdue_severity !== 'None'
+                  ? ` (${task.overdue_severity})`
+                  : ''}
+              </span>
+            )}
+            {task.is_dependency_blocked && (
+              <span
+                className="badge"
+                style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' }}
+              >
+                Dep. Blocked ({task.blocking_prerequisites_count || 1})
+              </span>
+            )}
+          </div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Progress ({task.progress_method})</div>
@@ -593,12 +640,20 @@ export function Page() {
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Schedule &amp; Effort</div>
+          <div className="stat-label">Schedule &amp; Working Days</div>
           <div className="stat-value" style={{ fontSize: '1rem' }}>
             Due: {task.due_date || 'TBD'}
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+          <div style={{ fontSize: '0.78rem', color: task.is_overdue ? '#991b1b' : 'var(--muted)' }}>
+            {task.is_overdue
+              ? `${task.working_days_overdue ?? 0} working day(s) overdue`
+              : task.working_days_remaining !== null && task.working_days_remaining !== undefined
+                ? `${task.working_days_remaining} working day(s) left`
+                : `Effort: ${task.actual_effort_hours ?? 0}h / ${task.estimated_effort || 0}h`}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
             Effort: {task.actual_effort_hours ?? 0}h actual / {task.estimated_effort || 0}h est.
+            {task.planned_working_days ? ` · ${task.planned_working_days} work d span` : ''}
           </div>
         </div>
       </div>
@@ -638,27 +693,52 @@ export function Page() {
               onChange={(e) => setTransitionReason(e.target.value)}
             />
           </div>
-          {task.subtasks.some((st) => st.status !== 'Completed' && st.status !== 'Cancelled') && (
+          {(task.subtasks.some((st) => st.status !== 'Completed' && st.status !== 'Cancelled') ||
+            task.is_dependency_blocked ||
+            (task.dependency_summary?.unsatisfied_for_complete?.length || 0) > 0) && (
             <div className="form-field">
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.45rem',
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={overrideSubtasks}
-                  onChange={(e) => setOverrideSubtasks(e.target.checked)}
-                />
-                <span>Authorized Subtask Override (SRS §8.3 &amp; §22 #9)</span>
-              </label>
-              {overrideSubtasks && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                {task.subtasks.some((st) => st.status !== 'Completed' && st.status !== 'Cancelled') && (
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={overrideSubtasks}
+                      onChange={(e) => setOverrideSubtasks(e.target.checked)}
+                    />
+                    <span>Authorized Subtask Override (SRS §8.3 &amp; §22 #9)</span>
+                  </label>
+                )}
+                {(task.is_dependency_blocked ||
+                  (task.dependency_summary?.unsatisfied_for_complete?.length || 0) > 0) && (
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={overrideDependencies}
+                      onChange={(e) => setOverrideDependencies(e.target.checked)}
+                    />
+                    <span>Authorized Dependency Override (SRS §7.9 &amp; §22 #20)</span>
+                  </label>
+                )}
+              </div>
+              {(overrideSubtasks || overrideDependencies) && (
                 <input
                   className="input"
-                  placeholder="Required override reason..."
+                  style={{ marginTop: '0.35rem' }}
+                  placeholder="Required authorized override reason..."
                   value={overrideReason}
                   onChange={(e) => setOverrideReason(e.target.value)}
                 />
@@ -819,8 +899,18 @@ export function Page() {
             >
               {task.due_status}
               {task.days_remaining !== null && task.days_remaining !== undefined
-                ? ` (${task.days_remaining >= 0 ? `${task.days_remaining}d left` : `${Math.abs(task.days_remaining)}d overdue`})`
+                ? ` (${
+                    task.days_remaining >= 0
+                      ? `${task.days_remaining}d / ${task.working_days_remaining ?? 0} work d left`
+                      : `${Math.abs(task.days_remaining)}d / ${task.working_days_overdue ?? 0} work d overdue`
+                  })`
                 : ''}
+            </span>
+          )}
+          {task.working_calendar && (
+            <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
+              Calendar: {task.working_calendar.working_day_labels.join(', ')} (
+              {task.working_calendar.holidays.length} holiday(s))
             </span>
           )}
         </div>
@@ -980,13 +1070,27 @@ export function Page() {
       {/* PREREQUISITE DEPENDENCIES, SUBTASKS & CHECKLISTS */}
       <div className="form-grid" style={{ marginBottom: '1.25rem' }}>
         <div className="card">
-          <h3>Prerequisite Dependencies ({task.dependencies.length})</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
+            <div>
+              <p className="eyebrow">SRS §7.9 · Dependency Rules &amp; Ripple Impact</p>
+              <h3 style={{ margin: 0 }}>
+                Task Dependencies ({task.dependencies.length} Upstream ·{' '}
+                {task.dependency_summary?.downstream_total_count ?? (task.dependent_tasks?.length || 0)}{' '}
+                Downstream)
+              </h3>
+            </div>
+            <Link to={`/projects/${task.project}/timeline`} className="btn btn-sm">
+              Timeline Graph →
+            </Link>
+          </div>
+
           <form
             onSubmit={handleAddDependency}
-            style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.85rem' }}
+            style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem', marginBottom: '0.85rem' }}
           >
             <select
               className="select"
+              style={{ flex: '2 1 190px' }}
               value={selectedPrereqTask}
               onChange={(e) => setSelectedPrereqTask(e.target.value)}
             >
@@ -997,42 +1101,184 @@ export function Page() {
                 </option>
               ))}
             </select>
+            <select
+              className="select"
+              style={{ flex: '1 1 155px' }}
+              value={selectedDepType}
+              onChange={(e) =>
+                setSelectedDepType(e.target.value as TaskDependency['dependency_type'])
+              }
+            >
+              <option value="Finish-to-Start">Finish-to-Start (FS)</option>
+              <option value="Start-to-Start">Start-to-Start (SS)</option>
+              <option value="Finish-to-Finish">Finish-to-Finish (FF)</option>
+              <option value="Start-to-Finish">Start-to-Finish (SF)</option>
+            </select>
             <button type="submit" className="btn btn-sm btn-primary">
               + Link Prerequisite
             </button>
           </form>
 
-          {task.dependencies.map((dep) => (
+          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '0.35rem' }}>
+            Upstream Prerequisites ({task.dependencies.length})
+          </div>
+          {task.dependencies.map((dep) => {
+            const isBlocking =
+              (task.status === 'In Progress' ||
+                task.status === 'In Review' ||
+                task.status === 'Changes Requested' ||
+                task.status === 'Approved')
+                ? dep.is_satisfied_for_complete === false
+                : dep.is_satisfied_for_start === false
+            return (
+              <div
+                key={dep.id}
+                style={{
+                  padding: '0.55rem 0',
+                  borderBottom: '1px solid var(--line)',
+                  fontSize: '0.84rem',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                  <div>
+                    <Link to={`/tasks/${dep.depends_on_task}`} style={{ fontWeight: 600 }}>
+                      {dep.depends_on_title}
+                    </Link>{' '}
+                    <span className="badge" style={{ fontSize: '0.7rem' }}>
+                      {dep.dependency_type}
+                    </span>{' '}
+                    <span className="badge" style={{ fontSize: '0.7rem' }}>
+                      {dep.depends_on_status}
+                    </span>{' '}
+                    {isBlocking ? (
+                      <span
+                        className="badge"
+                        style={{
+                          fontSize: '0.7rem',
+                          background: '#fef3c7',
+                          color: '#92400e',
+                          border: '1px solid #fde68a',
+                        }}
+                      >
+                        Blocking
+                      </span>
+                    ) : (
+                      <span className="badge badge-active" style={{ fontSize: '0.7rem' }}>
+                        Satisfied
+                      </span>
+                    )}
+                    {dep.depends_on_is_overdue && (
+                      <span className="badge badge-critical" style={{ fontSize: '0.7rem', marginLeft: '0.25rem' }}>
+                        Prereq Overdue
+                      </span>
+                    )}
+                    <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '0.15rem' }}>
+                      Due: {dep.depends_on_due_date || 'TBD'} · Owner: {dep.depends_on_owner_name || '—'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => handleRemoveDependency(dep.id)}
+                  >
+                    Remove
+                  </button>
+                </div>
+                {dep.schedule_conflict && (
+                  <div
+                    style={{
+                      marginTop: '0.35rem',
+                      padding: '0.35rem 0.55rem',
+                      borderRadius: '0.35rem',
+                      background: '#fef2f2',
+                      color: '#991b1b',
+                      fontSize: '0.76rem',
+                    }}
+                  >
+                    ⚠ {dep.schedule_conflict}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {task.dependencies.length === 0 && (
+            <p style={{ color: 'var(--muted)', fontSize: '0.84rem', marginTop: 0 }}>
+              No upstream prerequisite dependencies linked.
+            </p>
+          )}
+
+          {/* Downstream Dependent Tasks & Delay Ripple Warnings */}
+          <div
+            style={{
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              color: 'var(--muted)',
+              textTransform: 'uppercase',
+              marginTop: '1rem',
+              marginBottom: '0.35rem',
+            }}
+          >
+            Downstream Dependent Tasks ({task.dependency_summary?.transitive_dependents?.length || 0})
+          </div>
+          {(task.dependency_summary?.delay_warnings?.length || 0) > 0 && (
             <div
-              key={dep.id}
+              style={{
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: '0.45rem',
+                padding: '0.6rem 0.75rem',
+                marginBottom: '0.65rem',
+                fontSize: '0.8rem',
+                color: '#991b1b',
+              }}
+            >
+              <strong>Manager Delay Warnings ({task.dependency_summary!.delay_warnings.length}):</strong>
+              <ul style={{ margin: '0.35rem 0 0 1.1rem', padding: 0 }}>
+                {task.dependency_summary!.delay_warnings.map((w, i) => (
+                  <li key={`${w.affected_task_id}-${i}`} style={{ marginBottom: '0.2rem' }}>
+                    <strong>[{w.severity}]</strong> {w.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {(task.dependency_summary?.transitive_dependents || []).map((dt) => (
+            <div
+              key={dt.dependency_id}
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 padding: '0.45rem 0',
                 borderBottom: '1px solid var(--line)',
-                fontSize: '0.85rem',
+                fontSize: '0.83rem',
               }}
             >
-              <span>
-                Depends on:{' '}
-                <Link to={`/tasks/${dep.depends_on_task}`}>
-                  <strong>{dep.depends_on_title}</strong>
-                </Link>{' '}
-                <span className="badge">{dep.depends_on_status}</span>
-              </span>
-              <button
-                type="button"
-                className="btn btn-sm"
-                onClick={() => handleRemoveDependency(dep.id)}
-              >
-                Remove
-              </button>
+              <div>
+                <Link to={`/tasks/${dt.task_id}`} style={{ fontWeight: 600 }}>
+                  {dt.hop_distance > 1 ? `↳ (Hop ${dt.hop_distance}) ` : '→ '}
+                  {dt.title}
+                </Link>
+                <div style={{ fontSize: '0.74rem', color: 'var(--muted)' }}>
+                  {dt.dependency_type} · Due: {dt.due_date || 'TBD'} · Owner:{' '}
+                  {dt.task_owner_name || '—'}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                <span className="badge" style={{ fontSize: '0.7rem' }}>
+                  {dt.status}
+                </span>
+                {dt.is_overdue && (
+                  <span className="badge badge-critical" style={{ fontSize: '0.68rem' }}>
+                    Overdue
+                  </span>
+                )}
+              </div>
             </div>
           ))}
-          {task.dependencies.length === 0 && (
-            <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
-              No prerequisite dependencies linked.
+          {(task.dependency_summary?.transitive_dependents?.length || 0) === 0 && (
+            <p style={{ color: 'var(--muted)', fontSize: '0.84rem', margin: 0 }}>
+              No downstream tasks depend on this task.
             </p>
           )}
         </div>
