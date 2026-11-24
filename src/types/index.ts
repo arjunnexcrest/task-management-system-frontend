@@ -8,11 +8,129 @@ export type UserStatus =
   | 'Deactivated'
 
 export interface ReportingManagerSummary {
+  relationship_id?: string
   id: string
   full_name: string
   email: string
   designation: string | null
   company_id: string
+  company_name?: string
+  start_date?: string | null
+}
+
+export interface CompanyMembershipSummary {
+  id: string
+  company: string
+  company_name: string
+  company_code: string
+  role: string
+  is_active: boolean
+  joined_at: string | null
+}
+
+export interface EmployeeDepartmentSummary {
+  id: string
+  department_id: string
+  department_name: string
+  department_code: string | null
+  company_id: string
+  company_name: string
+  is_head: boolean
+  start_date: string | null
+}
+
+export interface EmployeeTeamSummary {
+  id: string
+  team_id: string
+  team_name: string
+  team_code: string | null
+  department_id: string
+  department_name: string
+  company_id: string
+  is_leader: boolean
+  joined_at: string | null
+}
+
+export interface DirectReportSummary {
+  relationship_id: string
+  id: string
+  full_name: string
+  email: string
+  employee_id: string | null
+  designation: string | null
+  company_id: string
+  company_name: string
+  start_date: string | null
+}
+
+export interface ReportingChainNode {
+  level: number
+  relationship_id: string
+  id: string
+  full_name: string
+  email: string
+  designation: string | null
+  company_id: string
+  company_name: string
+}
+
+export interface ReportingHistoryEntry {
+  id: string
+  company_id: string
+  company_name: string
+  manager_id: string
+  manager_name: string
+  manager_email: string
+  start_date: string | null
+  end_date: string | null
+  is_active: boolean
+}
+
+export interface ReportingRelationshipRecord {
+  id: string
+  company: string
+  company_name: string
+  company_code: string
+  employee: string
+  employee_name: string
+  employee_email: string
+  employee_designation: string | null
+  manager: string
+  manager_name: string
+  manager_email: string
+  manager_designation: string | null
+  start_date: string
+  end_date: string | null
+  is_active: boolean
+}
+
+export interface HierarchyNode {
+  id: string
+  full_name: string
+  email: string
+  employee_id: string | null
+  designation: string | null
+  role: string
+  company_id: string
+  company_name: string
+  company_code: string
+  departments: string[]
+  teams: string[]
+  manager_id: string | null
+  relationship_id: string | null
+}
+
+export interface HierarchyEdge {
+  id: string
+  company_id: string
+  employee_id: string
+  manager_id: string
+  start_date: string
+}
+
+export interface ReportingHierarchyResponse {
+  nodes: HierarchyNode[]
+  edges: HierarchyEdge[]
 }
 
 export interface User {
@@ -20,6 +138,10 @@ export interface User {
   email: string
   username: string
   full_name: string
+  company?: string | null
+  company_name?: string | null
+  role?: string
+  memberships?: CompanyMembershipSummary[]
   employee_id: string | null
   designation: string | null
   phone: string | null
@@ -40,6 +162,14 @@ export interface User {
   updated_at: string
   date_joined: string
   last_login: string | null
+}
+
+export interface EmployeeProfileDetail extends User {
+  departments: EmployeeDepartmentSummary[]
+  teams: EmployeeTeamSummary[]
+  direct_reports: DirectReportSummary[]
+  reporting_chain: ReportingChainNode[]
+  reporting_history: ReportingHistoryEntry[]
 }
 
 export interface TokenPair {
