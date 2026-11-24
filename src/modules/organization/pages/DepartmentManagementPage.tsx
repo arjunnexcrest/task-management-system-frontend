@@ -1,15 +1,14 @@
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  type LookupData,
-  type OrganizationDepartment,
-  projectsApi,
-} from '@/modules/projects/api'
+import { type LookupData, projectsApi } from '@/modules/projects/api'
+import { type Department, organizationApi } from '@/modules/organization/api'
 
 export function Page() {
   const [lookup, setLookup] = useState<LookupData | null>(null)
-  const [departments, setDepartments] = useState<OrganizationDepartment[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
   const [companyFilter, setCompanyFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -20,34 +19,87 @@ export function Page() {
   const [newCode, setNewCode] = useState('')
   const [newHead, setNewHead] = useState('')
 
+  // Edit Department inline state
+  const [editingDeptId, setEditingDeptId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editCode, setEditCode] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+
   // Transfer employee form
   const [transferDeptId, setTransferDeptId] = useState('')
   const [transferUserId, setTransferUserId] = useState('')
   const [transferIsHead, setTransferIsHead] = useState(false)
 
   useEffect(() => {
-    projectsApi.getLookup().then((data) => {
-      setLookup(data)
-      if (data.companies.length > 0) {
-        setNewCompany(data.companies[0].id)
-      }
-      if (data.users.length > 0) {
-        setTransferUserId(data.users[0].id)
-      }
-    })
+    projectsApi
+      .getLookup()
+      .then((data) => {
+        setLookup(data)
+        if (data.companies.length > 0) {
+          setNewCompany(data.companies[0].id)
+        }
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Failed to load lookup data')
+      })
   }, [])
 
   useEffect(() => {
     loadDepartments()
-  }, [companyFilter])
+  }, [companyFilter, statusFilter])
 
-  async function loadDepartments() {
+  function getUsersForCompany(companyId: string) {
+    if (!lookup) return []
+    if (!companyId) return lookup.users
+    return lookup.users.filter((u) => u.company_ids?.includes(companyId))
+  }
+
+  const createCompanyUsers = useMemo(
+    () => getUsersForCompany(newCompany),
+    [lookup, newCompany],
+  )
+
+  const activeDepartments = useMemo(
+    () => departments.filter((d) => d.status === 'Active'),
+    [departments],
+  )
+
+  const selectedTransferDept = useMemo(
+    () => departments.find((d) => d.id === transferDeptId) || null,
+    [departments, transferDeptId],
+  )
+
+  const transferCompanyUsers = useMemo(
+    () => (selectedTransferDept ? getUsersForCompany(selectedTransferDept.company) : []),
+    [lookup, selectedTransferDept],
+  )
+
+  useEffect(() => {
+    if (newHead && !createCompanyUsers.some((u) => u.id === newHead)) {
+      setNewHead('')
+    }
+  }, [createCompanyUsers, newHead])
+
+  useEffect(() => {
+    if (transferCompanyUsers.length === 0) {
+      setTransferUserId('')
+    } else if (!transferCompanyUsers.some((u) => u.id === transferUserId)) {
+      setTransferUserId(transferCompanyUsers[0].id)
+    }
+  }, [transferCompanyUsers, transferUserId])
+
+  async function loadDepartments(overrideSearch?: string) {
     setLoading(true)
     try {
-      const list = await projectsApi.listDepartments(companyFilter || undefined)
+      const list = await organizationApi.listDepartments({
+        company: companyFilter || undefined,
+        status: statusFilter || undefined,
+        search: overrideSearch !== undefined ? overrideSearch : searchQuery || undefined,
+      })
       setDepartments(list)
-      if (list.length > 0 && !transferDeptId) {
-        setTransferDeptId(list[0].id)
+      const firstActive = list.find((d) => d.status === 'Active')
+      if (firstActive && (!transferDeptId || !list.some((d) => d.id === transferDeptId))) {
+        setTransferDeptId(firstActive.id)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load departments')
@@ -56,23 +108,83 @@ export function Page() {
     }
   }
 
+  async function handleSearchSubmit(e: FormEvent) {
+    e.preventDefault()
+    await loadDepartments(searchQuery)
+  }
+
   async function handleCreateDepartment(e: FormEvent) {
     e.preventDefault()
     setError(null)
     setSuccess(null)
     try {
-      await projectsApi.createDepartment({
+      await organizationApi.createDepartment({
         company: newCompany,
         name: newName.trim(),
-        code: newCode.trim() || undefined,
+        code: newCode.trim() || null,
         department_head: newHead || null,
       })
       setNewName('')
       setNewCode('')
+      setNewHead('')
       await loadDepartments()
-      setSuccess('Department created and Department Head assigned.')
+      setSuccess('Department created successfully.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create department')
+    }
+  }
+
+  function startEdit(dept: Department) {
+    setEditingDeptId(dept.id)
+    setEditName(dept.name)
+    setEditCode(dept.code || '')
+    setError(null)
+    setSuccess(null)
+  }
+
+  function cancelEdit() {
+    setEditingDeptId(null)
+    setEditName('')
+    setEditCode('')
+  }
+
+  async function handleSaveEdit(deptId: string) {
+    if (!editName.trim()) {
+      setError('Department name cannot be blank.')
+      return
+    }
+    setSavingEdit(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      await organizationApi.updateDepartment(deptId, {
+        name: editName.trim(),
+        code: editCode.trim() || null,
+      })
+      setEditingDeptId(null)
+      await loadDepartments()
+      setSuccess('Department updated.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update department')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  async function handleToggleStatus(dept: Department) {
+    setError(null)
+    setSuccess(null)
+    try {
+      if (dept.status === 'Active') {
+        await organizationApi.deactivateDepartment(dept.id)
+        setSuccess(`Department "${dept.name}" deactivated (history preserved).`)
+      } else {
+        await organizationApi.activateDepartment(dept.id)
+        setSuccess(`Department "${dept.name}" reactivated.`)
+      }
+      await loadDepartments()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update department status')
     }
   }
 
@@ -80,9 +192,9 @@ export function Page() {
     setError(null)
     setSuccess(null)
     try {
-      await projectsApi.assignDepartmentHead(deptId, userId || null)
+      await organizationApi.assignDepartmentHead(deptId, userId || null)
       await loadDepartments()
-      setSuccess('Department Head updated.')
+      setSuccess(userId ? 'Department Head assigned.' : 'Department Head unassigned.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to assign Department Head')
     }
@@ -94,7 +206,7 @@ export function Page() {
     setError(null)
     setSuccess(null)
     try {
-      await projectsApi.transferEmployeeToDepartment(
+      await organizationApi.transferEmployeeToDepartment(
         transferDeptId,
         transferUserId,
         transferIsHead,
@@ -115,8 +227,8 @@ export function Page() {
           <p className="eyebrow">SRS Module 3 (§5.1) · Department Management</p>
           <h1>Departments &amp; Department Heads</h1>
           <p>
-            Create company departments, assign Department Heads, transfer employees while preserving
-            history, and track project participation.
+            Create, edit, and deactivate company departments, assign Department Heads from the
+            department&apos;s company, and transfer employees while preserving history.
           </p>
         </div>
         <div className="btn-row">
@@ -197,14 +309,14 @@ export function Page() {
               />
             </div>
             <div className="form-field">
-              <label>Department Head</label>
+              <label>Department Head (Company Members)</label>
               <select
                 className="select"
                 value={newHead}
                 onChange={(e) => setNewHead(e.target.value)}
               >
                 <option value="">Unassigned</option>
-                {lookup?.users.map((u) => (
+                {createCompanyUsers.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.full_name} ({u.designation || u.email})
                   </option>
@@ -223,14 +335,17 @@ export function Page() {
           <h3>Assign / Transfer Employee to Department (SRS §5.1)</h3>
           <div className="form-grid" style={{ marginTop: '0.75rem' }}>
             <div className="form-field">
-              <label>Target Department *</label>
+              <label>Target Active Department *</label>
               <select
                 className="select"
                 required
                 value={transferDeptId}
                 onChange={(e) => setTransferDeptId(e.target.value)}
               >
-                {departments.map((d) => (
+                {activeDepartments.length === 0 && (
+                  <option value="">No active departments</option>
+                )}
+                {activeDepartments.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name} ({d.company_code})
                   </option>
@@ -238,14 +353,17 @@ export function Page() {
               </select>
             </div>
             <div className="form-field">
-              <label>Employee *</label>
+              <label>Employee (Same Company) *</label>
               <select
                 className="select"
                 required
                 value={transferUserId}
                 onChange={(e) => setTransferUserId(e.target.value)}
               >
-                {lookup?.users.map((u) => (
+                {transferCompanyUsers.length === 0 && (
+                  <option value="">No active members in this company</option>
+                )}
+                {transferCompanyUsers.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.full_name} ({u.designation || u.email})
                   </option>
@@ -271,7 +389,11 @@ export function Page() {
             <span>Designate as Department Head</span>
           </label>
           <div className="btn-row" style={{ marginTop: '1rem' }}>
-            <button type="submit" className="btn btn-primary">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={!transferDeptId || !transferUserId}
+            >
               Assign / Transfer Employee
             </button>
           </div>
@@ -279,7 +401,14 @@ export function Page() {
       </div>
 
       <div className="card">
-        <div className="filter-bar">
+        <form className="filter-bar" onSubmit={handleSearchSubmit}>
+          <input
+            className="input"
+            placeholder="Search by department name or code..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ minWidth: '220px' }}
+          />
           <select
             className="select"
             value={companyFilter}
@@ -292,61 +421,153 @@ export function Page() {
               </option>
             ))}
           </select>
-        </div>
+          <select
+            className="select"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="">All Statuses</option>
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+          <button type="submit" className="btn">
+            Search
+          </button>
+        </form>
 
         {loading ? (
           <p>Loading departments...</p>
+        ) : departments.length === 0 ? (
+          <p style={{ color: 'var(--muted)', padding: '1rem 0' }}>
+            No departments found matching the current filters.
+          </p>
         ) : (
           <table className="data-table">
             <thead>
               <tr>
                 <th>Department</th>
                 <th>Company</th>
+                <th>Status</th>
                 <th>Department Head</th>
-                <th>Teams</th>
-                <th>Active Members</th>
-                <th>Participating Projects</th>
-                <th>Change Department Head</th>
+                <th>Teams / Members</th>
+                <th>Projects</th>
+                <th>Assign / Change Head</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {departments.map((d) => (
-                <tr key={d.id}>
-                  <td>
-                    <strong>{d.name}</strong>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
-                      Code: {d.code || '—'}
-                    </div>
-                  </td>
-                  <td>
-                    {d.company_name} ({d.company_code})
-                  </td>
-                  <td>
-                    <strong>{d.department_head_name || 'Unassigned'}</strong>
-                  </td>
-                  <td>{d.teams_count}</td>
-                  <td>{d.active_members_count}</td>
-                  <td>
-                    <span className="badge badge-active">
-                      {d.mapped_projects_count} project(s)
-                    </span>
-                  </td>
-                  <td>
-                    <select
-                      className="select"
-                      value={d.department_head_id || ''}
-                      onChange={(e) => handleAssignHead(d.id, e.target.value)}
-                    >
-                      <option value="">Unassigned</option>
-                      {lookup?.users.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.full_name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
-              ))}
+              {departments.map((d) => {
+                const isEditing = editingDeptId === d.id
+                const deptCompanyUsers = getUsersForCompany(d.company)
+                return (
+                  <tr key={d.id}>
+                    <td>
+                      {isEditing ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                          <input
+                            className="input"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            placeholder="Department name"
+                          />
+                          <input
+                            className="input"
+                            value={editCode}
+                            onChange={(e) => setEditCode(e.target.value)}
+                            placeholder="Code (optional)"
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <strong>{d.name}</strong>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
+                            Code: {d.code || '—'}
+                          </div>
+                        </>
+                      )}
+                    </td>
+                    <td>
+                      {d.company_name} ({d.company_code})
+                    </td>
+                    <td>
+                      <span
+                        className={`badge ${
+                          d.status === 'Active' ? 'badge-active' : 'badge-inactive'
+                        }`}
+                      >
+                        {d.status}
+                      </span>
+                    </td>
+                    <td>
+                      <strong>{d.department_head_name || 'Unassigned'}</strong>
+                      {d.department_head_email && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                          {d.department_head_email}
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      {d.teams_count} team(s) · {d.active_members_count} member(s)
+                    </td>
+                    <td>
+                      <span className="badge badge-active">
+                        {d.mapped_projects_count} project(s)
+                      </span>
+                    </td>
+                    <td>
+                      <select
+                        className="select"
+                        disabled={d.status !== 'Active'}
+                        value={d.department_head_id || ''}
+                        onChange={(e) => handleAssignHead(d.id, e.target.value)}
+                      >
+                        <option value="">Unassigned</option>
+                        {deptCompanyUsers.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <div className="btn-row">
+                        {isEditing ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              disabled={savingEdit}
+                              onClick={() => handleSaveEdit(d.id)}
+                            >
+                              Save
+                            </button>
+                            <button type="button" className="btn" onClick={cancelEdit}>
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => startEdit(d)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => handleToggleStatus(d)}
+                            >
+                              {d.status === 'Active' ? 'Deactivate' : 'Activate'}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
