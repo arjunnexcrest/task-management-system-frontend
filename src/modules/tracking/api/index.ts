@@ -1,11 +1,14 @@
 import { env } from '@/config/env'
+import { tokenStorage } from '@/api/client'
 
 const BASE_URL = `${env.apiBaseUrl}/api`
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = tokenStorage.getAccess()
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options?.headers || {}),
     },
     ...options,

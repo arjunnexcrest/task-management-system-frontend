@@ -1,29 +1,44 @@
 import { env } from '@/config/env'
+import { tokenStorage } from '@/api/client'
 import type { ApprovalChainInfo, ReviewSlaInfo, TaskReviewItem } from '@/modules/reviews/api'
 import type { CreateProgressUpdatePayload, ProgressUpdateItem } from '@/modules/tracking/api'
 
 const BASE_URL = `${env.apiBaseUrl}/api`
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = tokenStorage.getAccess()
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options?.headers || {}),
     },
     ...options,
   })
   if (!res.ok) {
     const errText = await res.text()
-    try {
-      const parsed = JSON.parse(errText)
-      if (parsed.error) throw new Error(typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error))
-      if (parsed.detail) throw new Error(typeof parsed.detail === 'string' ? parsed.detail : JSON.stringify(parsed.detail))
-    } catch (inner) {
-      if (inner instanceof Error && inner.message && !inner.message.startsWith('Unexpected token') && !inner.message.startsWith('JSON')) {
-        throw inner
+    if (errText && !errText.trim().startsWith('<')) {
+      try {
+        const parsed = JSON.parse(errText)
+        if (parsed.error) {
+          throw new Error(typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error))
+        }
+        if (parsed.detail) {
+          throw new Error(typeof parsed.detail === 'string' ? parsed.detail : JSON.stringify(parsed.detail))
+        }
+      } catch (inner) {
+        if (
+          inner instanceof Error &&
+          inner.message &&
+          !inner.message.startsWith('Unexpected token') &&
+          !inner.message.startsWith('JSON')
+        ) {
+          throw inner
+        }
       }
+      throw new Error(errText || `HTTP error ${res.status}`)
     }
-    throw new Error(errText || `HTTP error ${res.status}`)
+    throw new Error(`HTTP error ${res.status}: ${res.statusText}`)
   }
   if (res.status === 204) {
     return undefined as T
@@ -466,8 +481,12 @@ export const tasksApi = {
     if (options?.progress_update) formData.append('progress_update', options.progress_update)
     if (options?.uploaded_by) formData.append('uploaded_by', options.uploaded_by)
 
+    const token = tokenStorage.getAccess()
     const res = await fetch(`${BASE_URL}/tasks/attachments/upload/`, {
       method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: formData,
     })
     if (!res.ok) {

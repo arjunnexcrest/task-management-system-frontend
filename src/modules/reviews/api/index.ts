@@ -1,4 +1,5 @@
 import { env } from '@/config/env'
+import { tokenStorage } from '@/api/client'
 import type { AttachmentDetail, Task } from '@/modules/tasks/api'
 
 const BASE_URL = `${env.apiBaseUrl}/api`
@@ -23,9 +24,11 @@ function parseErrorText(errText: string, status: number): string {
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = tokenStorage.getAccess()
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options?.headers || {}),
     },
     ...options,
@@ -259,8 +262,12 @@ export const reviewsApi = {
         formData.append('approval_required', String(payload.approval_required))
       }
       payload.files.forEach((f) => formData.append('files', f))
+      const token = tokenStorage.getAccess()
       const res = await fetch(`${BASE_URL}/reviews/submit/`, {
         method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: formData,
       })
       if (!res.ok) {
@@ -296,8 +303,12 @@ export const reviewsApi = {
       }
       payload.files.forEach((f) => formData.append('files', f))
 
+      const token = tokenStorage.getAccess()
       const res = await fetch(`${BASE_URL}/reviews/submit-decision/`, {
         method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: formData,
       })
       if (!res.ok) {
