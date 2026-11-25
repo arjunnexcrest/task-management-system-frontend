@@ -47,6 +47,7 @@ export function Page() {
   const canEditTasks = can('can_edit_tasks')
   const canCreateTasks = can('can_create_tasks')
   const canDeleteTasks = can('can_delete_tasks')
+  const canAssignTasks = can('can_assign_tasks')
   const [task, setTask] = useState<TaskDetail | null>(null)
   const [lookup, setLookup] = useState<LookupData | null>(null)
   const [projectTasks, setProjectTasks] = useState<Task[]>([])
@@ -860,6 +861,7 @@ export function Page() {
       </div>
 
       {/* PRIORITY & DUE DATE SCHEDULE MANAGEMENT CARD (SRS §7.4 & §7.10) */}
+      {canEditTasks && (
       <form className="card" onSubmit={handleReschedule} style={{ marginBottom: '1.25rem' }}>
         <h3>Priority &amp; Due Date Management (SRS §7.4 &amp; §7.10)</h3>
         <div className="form-grid">
@@ -947,6 +949,7 @@ export function Page() {
           )}
         </div>
       </form>
+      )}
 
       {/* TASK ASSIGNMENTS SECTION */}
       <div className="card" style={{ marginBottom: '1.25rem' }}>
@@ -958,6 +961,7 @@ export function Page() {
 
         {assignError && <p style={{ color: '#991b1b' }}>{assignError}</p>}
 
+        {canAssignTasks && (
         <form
           onSubmit={handleAssign}
           style={{
@@ -1030,6 +1034,7 @@ export function Page() {
             + Assign {assignType}
           </button>
         </form>
+        )}
 
         <table className="data-table">
           <thead>
@@ -1079,12 +1084,14 @@ export function Page() {
                           Acknowledge
                         </button>
                       )}
-                      <button
-                        className="btn btn-sm"
-                        onClick={() => tasksApi.endAssignment(a.id, 'Ended').then(refresh)}
-                      >
-                        End Assignment
-                      </button>
+                      {canAssignTasks && (
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => tasksApi.endAssignment(a.id, 'Ended').then(refresh)}
+                        >
+                          End Assignment
+                        </button>
+                      )}
                     </div>
                   )}
                 </td>
@@ -1116,6 +1123,7 @@ export function Page() {
             </Link>
           </div>
 
+          {canEditTasks && (
           <form
             onSubmit={handleAddDependency}
             style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem', marginBottom: '0.85rem' }}
@@ -1150,6 +1158,7 @@ export function Page() {
               + Link Prerequisite
             </button>
           </form>
+          )}
 
           <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '0.35rem' }}>
             Upstream Prerequisites ({task.dependencies.length})

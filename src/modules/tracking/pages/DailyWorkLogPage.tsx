@@ -1,5 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '@/modules/accounts/context/AuthContext'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { type LookupData, type Project, projectsApi } from '@/modules/projects/api'
 import { type Task, tasksApi } from '@/modules/tasks/api'
 import {
@@ -9,6 +11,8 @@ import {
 } from '@/modules/tracking/api'
 
 export function Page() {
+  const { user: currentUser } = useAuth()
+  const { isEmployee } = usePermissions()
   const [updates, setUpdates] = useState<ProgressUpdateItem[]>([])
   const [summary, setSummary] = useState<WorkLogReviewSummary | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
@@ -72,7 +76,9 @@ export function Page() {
           setSelectedTaskId(taskList[0].id)
           setProgressPct(String(Math.round(Number(taskList[0].progress || 0))))
         }
-        if (lkp.users.length > 0) {
+        if (currentUser?.id) {
+          setSelectedAuthorId(currentUser.id)
+        } else if (lkp.users.length > 0) {
           setSelectedAuthorId(lkp.users[0].id)
         }
       })
@@ -270,6 +276,7 @@ export function Page() {
             <select
               className="select"
               value={selectedAuthorId}
+              disabled={isEmployee}
               onChange={(e) => setSelectedAuthorId(e.target.value)}
             >
               {lookup?.users.map((u) => (

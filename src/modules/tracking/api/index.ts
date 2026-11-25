@@ -173,4 +173,25 @@ export const trackingApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  getActiveTimer: () =>
+    request<{ active_timer: TimeEntryItem | null }>('/tracking/time-entries/active-timer/'),
+
+  startTimer: (taskId: string) =>
+    request<TimeEntryItem>('/tracking/time-entries/start-timer/', {
+      method: 'POST',
+      body: JSON.stringify({ task: taskId }),
+    }),
+
+  stopTimer: () =>
+    request<TimeEntryItem>('/tracking/time-entries/stop-timer/', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  approveTimeEntry: (id: string, approvalStatus: 'Approved' | 'Rejected') =>
+    request<TimeEntryItem>(`/tracking/time-entries/${id}/approve/`, {
+      method: 'POST',
+      body: JSON.stringify({ approval_status: approvalStatus }),
+    }),
 }
