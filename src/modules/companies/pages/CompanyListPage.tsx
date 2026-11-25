@@ -1,9 +1,12 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { companiesApi, type Company } from '@/modules/companies/api'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { ApiError } from '@/api/client'
 
 export function Page() {
+  const { can } = usePermissions()
+  const canManageCompanies = can('can_manage_companies')
   const [companies, setCompanies] = useState<Company[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [search, setSearch] = useState('')
@@ -156,15 +159,17 @@ export function Page() {
             Create, edit, search, and soft-deactivate companies (CEO only).
           </p>
         </div>
-        <div className="btn-row">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => (showForm ? setShowForm(false) : openCreateForm())}
-          >
-            {showForm ? 'Close Form' : '+ New Company'}
-          </button>
-        </div>
+        {canManageCompanies && (
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => (showForm ? setShowForm(false) : openCreateForm())}
+            >
+              {showForm ? 'Close Form' : '+ New Company'}
+            </button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -185,7 +190,7 @@ export function Page() {
         </div>
       )}
 
-      {showForm && (
+      {canManageCompanies && showForm && (
         <form onSubmit={handleSubmit} className="card">
           <h3>{editingId ? 'Edit Company' : 'Create New Company'}</h3>
           <div className="form-grid">
@@ -335,30 +340,34 @@ export function Page() {
                       <Link to={`/companies/${c.id}`} className="btn btn-sm">
                         View
                       </Link>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() => openEditForm(c)}
-                      >
-                        Edit
-                      </button>
-                      {c.is_active ? (
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          style={{ color: '#991b1b', borderColor: '#fecaca' }}
-                          onClick={() => handleDeactivate(c)}
-                        >
-                          Deactivate
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={() => handleReactivate(c)}
-                        >
-                          Activate
-                        </button>
+                      {canManageCompanies && (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            onClick={() => openEditForm(c)}
+                          >
+                            Edit
+                          </button>
+                          {c.is_active ? (
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              style={{ color: '#991b1b', borderColor: '#fecaca' }}
+                              onClick={() => handleDeactivate(c)}
+                            >
+                              Deactivate
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={() => handleReactivate(c)}
+                            >
+                              Activate
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </td>

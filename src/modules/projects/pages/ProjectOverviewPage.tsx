@@ -1,12 +1,18 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { type LookupData, type ProjectDetail, projectsApi } from '@/modules/projects/api'
 import { type Task, tasksApi } from '@/modules/tasks/api'
 
 export function Page() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { can } = usePermissions()
+  const canEditProjects = can('can_edit_projects')
+  const canDeleteProjects = can('can_delete_projects')
+  const canManageAssignments = can('can_manage_project_assignments')
+  const canCreateTasks = can('can_create_tasks')
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
   const [lookup, setLookup] = useState<LookupData | null>(null)
@@ -150,12 +156,16 @@ export function Page() {
           <Link to={`/projects/${project.id}/team`} className="btn btn-primary">
             Team &amp; Participation ({project.members_count ?? project.members.length})
           </Link>
-          <Link to={`/projects/${project.id}/assignments`} className="btn">
-            PM &amp; Dept Mapping
-          </Link>
-          <Link to={`/projects/${project.id}/edit`} className="btn">
-            Edit Project
-          </Link>
+          {canManageAssignments && (
+            <Link to={`/projects/${project.id}/assignments`} className="btn">
+              PM &amp; Dept Mapping
+            </Link>
+          )}
+          {canEditProjects && (
+            <Link to={`/projects/${project.id}/edit`} className="btn">
+              Edit Project
+            </Link>
+          )}
           <Link to={`/projects/${project.id}/planning`} className="btn">
             Phases ({project.phases.length})
           </Link>
@@ -165,10 +175,12 @@ export function Page() {
           <Link to={`/projects/${project.id}/timeline`} className="btn">
             Timeline
           </Link>
-          <button type="button" className="btn" onClick={handleRecalculateProgress}>
-            Recalculate %
-          </button>
-          {project.status !== 'Completed' && (
+          {canCreateTasks && (
+            <button type="button" className="btn" onClick={handleRecalculateProgress}>
+              Recalculate %
+            </button>
+          )}
+          {canEditProjects && project.status !== 'Completed' && (
             <button
               type="button"
               className="btn"
@@ -177,22 +189,26 @@ export function Page() {
               Close Project
             </button>
           )}
-          {project.status !== 'Archived' && (
+          {canEditProjects && project.status !== 'Archived' && (
             <button type="button" className="btn" onClick={handleArchiveProject}>
               Archive
             </button>
           )}
-          <button
-            type="button"
-            className="btn"
-            style={{ color: '#991b1b', borderColor: '#fecaca' }}
-            onClick={() => setShowDeleteConfirm(true)}
-          >
-            Delete
-          </button>
-          <Link to={`/tasks/new?project=${project.id}`} className="btn btn-primary">
-            + Add Task
-          </Link>
+          {canDeleteProjects && (
+            <button
+              type="button"
+              className="btn"
+              style={{ color: '#991b1b', borderColor: '#fecaca' }}
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              Delete
+            </button>
+          )}
+          {canCreateTasks && (
+            <Link to={`/tasks/new?project=${project.id}`} className="btn btn-primary">
+              + Add Task
+            </Link>
+          )}
         </div>
       </div>
 
@@ -404,46 +420,50 @@ export function Page() {
                   Role: {m.role_in_project} · Status: {m.status}
                 </div>
               </div>
-              <button
-                type="button"
-                className="btn btn-sm"
-                onClick={() => handleRemoveMember(m.id)}
-              >
-                Remove
-              </button>
+              {canManageAssignments && (
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => handleRemoveMember(m.id)}
+                >
+                  Remove
+                </button>
+              )}
             </div>
           ))}
 
-          <form
-            onSubmit={handleAddMember}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1.5fr 1fr auto',
-              gap: '0.5rem',
-              marginTop: '0.85rem',
-            }}
-          >
-            <select
-              className="select"
-              value={newMemberUser}
-              onChange={(e) => setNewMemberUser(e.target.value)}
+          {canManageAssignments && (
+            <form
+              onSubmit={handleAddMember}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1.5fr 1fr auto',
+                gap: '0.5rem',
+                marginTop: '0.85rem',
+              }}
             >
-              {lookup?.users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.full_name}
-                </option>
-              ))}
-            </select>
-            <input
-              className="input"
-              placeholder="Role in project"
-              value={newMemberRole}
-              onChange={(e) => setNewMemberRole(e.target.value)}
-            />
-            <button type="submit" className="btn btn-sm btn-primary">
-              + Add Member
-            </button>
-          </form>
+              <select
+                className="select"
+                value={newMemberUser}
+                onChange={(e) => setNewMemberUser(e.target.value)}
+              >
+                {lookup?.users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.full_name}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="input"
+                placeholder="Role in project"
+                value={newMemberRole}
+                onChange={(e) => setNewMemberRole(e.target.value)}
+              />
+              <button type="submit" className="btn btn-sm btn-primary">
+                + Add Member
+              </button>
+            </form>
+          )}
         </div>
 
         <div className="card">
@@ -506,9 +526,11 @@ export function Page() {
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3>Project Tasks & Subtasks ({tasks.length})</h3>
-          <Link to={`/tasks/new?project=${project.id}`} className="btn btn-sm btn-primary">
-            + New Task
-          </Link>
+          {canCreateTasks && (
+            <Link to={`/tasks/new?project=${project.id}`} className="btn btn-sm btn-primary">
+              + New Task
+            </Link>
+          )}
         </div>
         <table className="data-table">
           <thead>

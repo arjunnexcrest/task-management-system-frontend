@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { type LookupData, projectsApi } from '@/modules/projects/api'
 import { ApprovalChainStepper } from '@/modules/reviews/components/ApprovalChainStepper'
 import {
@@ -42,6 +43,10 @@ const TASK_STATUSES: Task['status'][] = [
 export function Page() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { can } = usePermissions()
+  const canEditTasks = can('can_edit_tasks')
+  const canCreateTasks = can('can_create_tasks')
+  const canDeleteTasks = can('can_delete_tasks')
   const [task, setTask] = useState<TaskDetail | null>(null)
   const [lookup, setLookup] = useState<LookupData | null>(null)
   const [projectTasks, setProjectTasks] = useState<Task[]>([])
@@ -542,10 +547,12 @@ export function Page() {
               )
             })}
           </select>
-          <Link to={`/tasks/${task.id}/edit`} className="btn">
-            Edit Task
-          </Link>
-          {!task.is_subtask && (
+          {canEditTasks && (
+            <Link to={`/tasks/${task.id}/edit`} className="btn">
+              Edit Task
+            </Link>
+          )}
+          {canCreateTasks && !task.is_subtask && (
             <Link
               to={`/tasks/new?project=${task.project}&parent=${task.id}`}
               className="btn btn-primary"
@@ -553,14 +560,16 @@ export function Page() {
               + Add Subtask
             </Link>
           )}
-          <button
-            type="button"
-            className="btn"
-            style={{ color: '#991b1b', borderColor: '#fecaca' }}
-            onClick={() => setShowDeleteConfirm(true)}
-          >
-            Delete Task
-          </button>
+          {canDeleteTasks && (
+            <button
+              type="button"
+              className="btn"
+              style={{ color: '#991b1b', borderColor: '#fecaca' }}
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              Delete Task
+            </button>
+          )}
           <Link to="/tasks" className="btn">
             All Tasks
           </Link>

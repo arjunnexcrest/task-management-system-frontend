@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '@/modules/accounts/context/AuthContext'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { type LookupData, type Project, projectsApi } from '@/modules/projects/api'
 import {
   type ReviewQueueTask,
@@ -28,6 +30,9 @@ function statusBadgeClass(val: string) {
 }
 
 export function Page() {
+  const { user: currentUser } = useAuth()
+  const { can } = usePermissions()
+  const canConfigureChains = can('can_configure_approval_chains')
   const [activeTab, setActiveTab] = useState<QueueTab>('pending')
   const [queueTasks, setQueueTasks] = useState<ReviewQueueTask[]>([])
   const [historyReviews, setHistoryReviews] = useState<TaskReviewItem[]>([])
@@ -71,9 +76,13 @@ export function Page() {
     setLookup(lkp)
     setProjects(projs)
     if (!actingReviewerId && lkp.users.length > 0) {
-      const preferred =
-        lkp.users.find((u) => u.designation?.toLowerCase().includes('manager')) || lkp.users[0]
-      setActingReviewerId(preferred.id)
+      if (currentUser?.id) {
+        setActingReviewerId(currentUser.id)
+      } else {
+        const preferred =
+          lkp.users.find((u) => u.designation?.toLowerCase().includes('manager')) || lkp.users[0]
+        setActingReviewerId(preferred.id)
+      }
     }
   }
 
@@ -229,9 +238,11 @@ export function Page() {
           >
             {checkingSla ? 'Checking SLA...' : '⏱ Check SLA Escalations'}
           </button>
-          <button type="button" className="btn btn-primary" onClick={() => setShowChainConfig(true)}>
-            ⚙ Configure Chains &amp; SLA
-          </button>
+          {canConfigureChains && (
+            <button type="button" className="btn btn-primary" onClick={() => setShowChainConfig(true)}>
+              ⚙ Configure Chains &amp; SLA
+            </button>
+          )}
         </div>
       </div>
 

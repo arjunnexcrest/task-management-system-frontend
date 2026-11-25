@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { type LookupData, type Project, projectsApi } from '@/modules/projects/api'
 import { type Task, tasksApi } from '@/modules/tasks/api'
 
@@ -30,6 +31,11 @@ function badgeClass(value: string) {
 }
 
 export function Page() {
+  const { can } = usePermissions()
+  const canCreateTasks = can('can_create_tasks')
+  const canEditTasks = can('can_edit_tasks')
+  const canDeleteTasks = can('can_delete_tasks')
+  const canAssignTasks = can('can_assign_tasks')
   const [lookup, setLookup] = useState<LookupData | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
@@ -211,23 +217,27 @@ export function Page() {
           </p>
         </div>
         <div className="btn-row" style={{ flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            className="btn"
-            disabled={checkingDeadlines}
-            onClick={handleCheckDeadlines}
-          >
-            {checkingDeadlines ? 'Scanning Deadlines...' : 'Check Deadlines & Alerts'}
-          </button>
+          {canAssignTasks && (
+            <button
+              type="button"
+              className="btn"
+              disabled={checkingDeadlines}
+              onClick={handleCheckDeadlines}
+            >
+              {checkingDeadlines ? 'Scanning Deadlines...' : 'Check Deadlines & Alerts'}
+            </button>
+          )}
           <Link to="/calendar" className="btn">
             Schedule Calendar
           </Link>
           <Link to="/kanban" className="btn">
             Kanban Board
           </Link>
-          <Link to="/tasks/new" className="btn btn-primary">
-            + Create Task / Subtask
-          </Link>
+          {canCreateTasks && (
+            <Link to="/tasks/new" className="btn btn-primary">
+              + Create Task / Subtask
+            </Link>
+          )}
         </div>
       </div>
 
@@ -471,7 +481,7 @@ export function Page() {
           </div>
         )}
 
-        {selectedTaskIds.length > 0 && (
+        {canAssignTasks && selectedTaskIds.length > 0 && (
           <div
             style={{
               display: 'flex',
@@ -742,10 +752,12 @@ export function Page() {
                       <Link to={`/tasks/${t.id}`} className="btn btn-sm">
                         View
                       </Link>
-                      <Link to={`/tasks/${t.id}/edit`} className="btn btn-sm">
-                        Edit
-                      </Link>
-                      {!t.is_subtask && (
+                      {canEditTasks && (
+                        <Link to={`/tasks/${t.id}/edit`} className="btn btn-sm">
+                          Edit
+                        </Link>
+                      )}
+                      {canCreateTasks && !t.is_subtask && (
                         <Link
                           to={`/tasks/new?project=${t.project}&parent=${t.id}`}
                           className="btn btn-sm"
@@ -753,14 +765,16 @@ export function Page() {
                           + Subtask
                         </Link>
                       )}
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        style={{ color: '#991b1b', borderColor: '#fecaca' }}
-                        onClick={() => setTaskToDelete(t)}
-                      >
-                        Delete
-                      </button>
+                      {canDeleteTasks && (
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          style={{ color: '#991b1b', borderColor: '#fecaca' }}
+                          onClick={() => setTaskToDelete(t)}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

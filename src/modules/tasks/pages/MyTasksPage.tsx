@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '@/modules/accounts/context/AuthContext'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { type LookupData, projectsApi } from '@/modules/projects/api'
 import { SubmitForReviewModal } from '@/modules/reviews/components/ReviewModals'
 import { type Task, tasksApi } from '@/modules/tasks/api'
@@ -23,8 +25,10 @@ function badgeClass(value: string) {
 }
 
 export function Page() {
+  const { user: currentUser } = useAuth()
+  const { isEmployee } = usePermissions()
   const [lookup, setLookup] = useState<LookupData | null>(null)
-  const [selectedUser, setSelectedUser] = useState('')
+  const [selectedUser, setSelectedUser] = useState(currentUser?.id ?? '')
   const [priorityFilter, setPriorityFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [overdueOnly, setOverdueOnly] = useState(false)
@@ -37,8 +41,14 @@ export function Page() {
     const [lkp, tList] = await Promise.all([projectsApi.getLookup(), tasksApi.listTasks()])
     setLookup(lkp)
     setTasks(tList)
-    if (!selectedUser && lkp.users.length > 0) {
-      setSelectedUser(lkp.users[0].id)
+    if (isEmployee && currentUser?.id) {
+      setSelectedUser(currentUser.id)
+    } else if (!selectedUser) {
+      if (currentUser?.id) {
+        setSelectedUser(currentUser.id)
+      } else if (lkp.users.length > 0) {
+        setSelectedUser(lkp.users[0].id)
+      }
     }
   }
 
@@ -78,18 +88,20 @@ export function Page() {
           </p>
         </div>
         <div className="btn-row">
-          <select
-            className="select"
-            value={selectedUser}
-            onChange={(e) => setSelectedUser(e.target.value)}
-          >
-            <option value="">All Employees</option>
-            {lookup?.users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.full_name} ({u.email})
-              </option>
-            ))}
-          </select>
+          {!isEmployee && (
+            <select
+              className="select"
+              value={selectedUser}
+              onChange={(e) => setSelectedUser(e.target.value)}
+            >
+              <option value="">All Employees</option>
+              {lookup?.users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name} ({u.email})
+                </option>
+              ))}
+            </select>
+          )}
           <select
             className="select"
             value={statusFilter}

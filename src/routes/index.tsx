@@ -48,7 +48,7 @@ export function AppRoutes() {
       <Route path="reset-password" element={<ResetPasswordPage />} />
       <Route path="activate" element={<AccountActivationPage />} />
 
-      {/* Protected Dashboard Routes (Accessible ONLY after login) */}
+      {/* Protected Dashboard Routes (Accessible ONLY after login + RBAC guarded) */}
       <Route
         element={
           <ProtectedRoute>
@@ -57,40 +57,176 @@ export function AppRoutes() {
         }
       >
         <Route index element={<HomePage />} />
-        <Route path="employees" element={<EmployeeListPage />} />
+
+        {/* Dashboards */}
+        <Route
+          path="dashboards/ceo"
+          element={
+            <ProtectedRoute requiredCapability="can_view_ceo_dashboard">
+              <CeoDashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="dashboards/role" element={<RoleDashboardPage />} />
+
+        {/* Organization & Governance */}
+        <Route
+          path="companies"
+          element={
+            <ProtectedRoute requiredCapability="can_view_companies">
+              <CompanyListPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="companies/:id"
+          element={
+            <ProtectedRoute requiredCapability="can_view_companies">
+              <CompanyDetailsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="employees"
+          element={
+            <ProtectedRoute requiredCapability="can_view_employees">
+              <EmployeeListPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="employees/:id" element={<EmployeeProfilePage />} />
-        <Route path="companies" element={<CompanyListPage />} />
-        <Route path="companies/:id" element={<CompanyDetailsPage />} />
-        <Route path="organization" element={<OrganizationChartPage />} />
-        <Route path="departments" element={<DepartmentManagementPage />} />
-        <Route path="teams" element={<TeamManagementPage />} />
-        <Route path="rbac" element={<RolePermissionPage />} />
+        <Route
+          path="organization"
+          element={
+            <ProtectedRoute requiredCapability="can_view_employees">
+              <OrganizationChartPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="departments"
+          element={
+            <ProtectedRoute requiredCapability="can_view_departments">
+              <DepartmentManagementPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="teams"
+          element={
+            <ProtectedRoute requiredCapability="can_view_teams">
+              <TeamManagementPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="rbac"
+          element={
+            <ProtectedRoute requiredCapability="can_manage_rbac">
+              <RolePermissionPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="settings"
+          element={
+            <ProtectedRoute requiredCapability="can_manage_settings">
+              <SettingsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Projects */}
         <Route path="projects" element={<ProjectListPage />} />
-        <Route path="projects/new" element={<ProjectFormPage />} />
+        <Route
+          path="projects/new"
+          element={
+            <ProtectedRoute requiredCapability="can_create_projects">
+              <ProjectFormPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="projects/:id" element={<ProjectOverviewPage />} />
-        <Route path="projects/:id/edit" element={<ProjectFormPage />} />
-        <Route path="projects/:id/assignments" element={<ProjectAssignmentPage />} />
+        <Route
+          path="projects/:id/edit"
+          element={
+            <ProtectedRoute requiredCapability="can_edit_projects">
+              <ProjectFormPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="projects/:id/assignments"
+          element={
+            <ProtectedRoute requiredCapability="can_manage_project_assignments">
+              <ProjectAssignmentPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="projects/:id/team" element={<ProjectTeamPage />} />
         <Route path="projects/:id/planning" element={<ProjectPlanningPage />} />
         <Route path="projects/:id/milestones" element={<ProjectMilestonesPage />} />
         <Route path="projects/:id/timeline" element={<ProjectTimelinePage />} />
+
+        {/* Tasks & Execution */}
         <Route path="tasks" element={<TaskListPage />} />
         <Route path="tasks/mine" element={<MyTasksPage />} />
-        <Route path="tasks/new" element={<TaskFormPage />} />
+        <Route
+          path="tasks/new"
+          element={
+            <ProtectedRoute requiredCapability="can_create_tasks">
+              <TaskFormPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="tasks/:id" element={<TaskDetailsPage />} />
-        <Route path="tasks/:id/edit" element={<TaskFormPage />} />
+        <Route
+          path="tasks/:id/edit"
+          element={
+            <ProtectedRoute requiredCapability="can_edit_tasks">
+              <TaskFormPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="kanban" element={<KanbanBoardPage />} />
         <Route path="calendar" element={<CalendarViewPage />} />
-        <Route path="workload" element={<WorkloadViewPage />} />
+        <Route
+          path="workload"
+          element={
+            <ProtectedRoute requiredCapability="can_view_workload">
+              <WorkloadViewPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Tracking, Reviews, Reports, Risks, Notifications */}
         <Route path="tracking" element={<TimeTrackingPage />} />
         <Route path="work-log" element={<DailyWorkLogPage />} />
-        <Route path="reviews" element={<ReviewQueuePage />} />
+        <Route
+          path="reviews"
+          element={
+            <ProtectedRoute requiredCapability="can_review_tasks">
+              <ReviewQueuePage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="notifications" element={<NotificationsPage />} />
-        <Route path="dashboards/ceo" element={<CeoDashboardPage />} />
-        <Route path="dashboards/role" element={<RoleDashboardPage />} />
-        <Route path="reports" element={<ReportsPage />} />
-        <Route path="risks" element={<RiskRegisterPage />} />
-        <Route path="settings" element={<SettingsPage />} />
+        <Route
+          path="reports"
+          element={
+            <ProtectedRoute requiredCapability="can_view_reports">
+              <ReportsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="risks"
+          element={
+            <ProtectedRoute requiredCapability="can_manage_risks">
+              <RiskRegisterPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
