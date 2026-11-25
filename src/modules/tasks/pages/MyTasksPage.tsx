@@ -212,7 +212,22 @@ export function Page() {
                     </td>
                     <td>{t.project_code}</td>
                     <td>
-                      <span className={badgeClass(t.status)}>{t.status}</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                        <span className={badgeClass(t.status)}>{t.status}</span>
+                        {t.is_dependency_blocked && (
+                          <span
+                            className="badge"
+                            style={{
+                              fontSize: '0.68rem',
+                              background: '#fef3c7',
+                              color: '#92400e',
+                              border: '1px solid #fde68a',
+                            }}
+                          >
+                            Dep. Blocked
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <span className={badgeClass(t.priority)}>{t.priority}</span>
@@ -281,6 +296,8 @@ export function Page() {
           open
           taskId={submitTask.id}
           taskTitle={submitTask.title}
+          companyId={submitTask.company_id}
+          isDependencyBlocked={submitTask.is_dependency_blocked}
           defaultReviewerId={submitTask.reviewer}
           defaultApprovalRequired={submitTask.approval_required}
           users={lookup?.users || []}

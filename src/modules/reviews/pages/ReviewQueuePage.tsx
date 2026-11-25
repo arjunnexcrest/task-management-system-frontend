@@ -59,6 +59,12 @@ export function Page() {
   const [showChainConfig, setShowChainConfig] = useState(false)
   const [previewAttachment, setPreviewAttachment] = useState<AttachmentDetail | null>(null)
   const [checkingSla, setCheckingSla] = useState(false)
+  const [completeOverrideTask, setCompleteOverrideTask] = useState<{
+    task: ReviewQueueTask
+    reasonError: string
+  } | null>(null)
+  const [completeOverrideReason, setCompleteOverrideReason] = useState('')
+  const [completingOverride, setCompletingOverride] = useState(false)
 
   async function loadMetadata() {
     const [lkp, projs] = await Promise.all([projectsApi.getLookup(), projectsApi.listProjects()])
@@ -133,7 +139,42 @@ export function Page() {
       setSuccess(`Task "${task.title}" marked as Completed.`)
       await loadQueueAndSummary()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to mark task as completed')
+      const msg = err instanceof Error ? err.message : 'Failed to mark task as completed'
+      if (
+        msg.toLowerCase().includes('subtask') ||
+        msg.toLowerCase().includes('prerequisite') ||
+        msg.toLowerCase().includes('override')
+      ) {
+        setCompleteOverrideReason('')
+        setCompleteOverrideTask({ task, reasonError: msg })
+      } else {
+        setError(msg)
+      }
+    }
+  }
+
+  async function handleConfirmCompleteOverride() {
+    if (!completeOverrideTask) return
+    if (!completeOverrideReason.trim()) {
+      setError('An authorized override reason is required to complete this task.')
+      return
+    }
+    setCompletingOverride(true)
+    setError(null)
+    try {
+      await tasksApi.transitionStatus(completeOverrideTask.task.id, 'Completed', {
+        reason: 'Finalized after approval with authorized override',
+        override_subtasks: (completeOverrideTask.task.open_subtasks_count || 0) > 0,
+        override_dependencies: Boolean(completeOverrideTask.task.is_dependency_blocked),
+        override_reason: completeOverrideReason.trim(),
+      })
+      setSuccess(`Task "${completeOverrideTask.task.title}" marked Completed with override logged.`)
+      setCompleteOverrideTask(null)
+      await loadQueueAndSummary()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Override completion failed')
+    } finally {
+      setCompletingOverride(false)
     }
   }
 
@@ -569,6 +610,28 @@ export function Page() {
                         {qt.approval_required && (
                           <span className="badge badge-medium">Mandatory Approval</span>
                         )}
+                        {qt.is_overdue && (
+                          <span className="badge badge-critical">
+                            Overdue {qt.days_overdue ?? 0}d ({qt.working_days_overdue ?? 0}w)
+                          </span>
+                        )}
+                        {qt.is_dependency_blocked && (
+                          <span
+                            className="badge"
+                            style={{
+                              background: '#fef3c7',
+                              color: '#92400e',
+                              border: '1px solid #fde68a',
+                            }}
+                          >
+                            Dep. Blocked ({qt.blocking_prerequisites_count || 1})
+                          </span>
+                        )}
+                        {(qt.open_subtasks_count || 0) > 0 && (
+                          <span className="badge">
+                            {qt.open_subtasks_count} open subtask(s)
+                          </span>
+                        )}
                         {qt.attachments_count > 0 && (
                           <span className="badge">📎 {qt.attachments_count} file(s)</span>
                         )}
@@ -915,6 +978,7 @@ export function Page() {
           taskId={decisionModal.task.id}
           taskTitle={decisionModal.task.title}
           projectCode={decisionModal.task.project_code}
+          companyId={decisionModal.task.company_id}
           defaultReviewerId={
             decisionModal.task.approval_chain.current_reviewer_id ||
             decisionModal.task.reviewer ||
@@ -936,6 +1000,8 @@ export function Page() {
           open
           taskId={submitModalTask.id}
           taskTitle={submitModalTask.title}
+          companyId={submitModalTask.company_id}
+          isDependencyBlocked={submitModalTask.is_dependency_blocked}
           defaultReviewerId={submitModalTask.reviewer}
           defaultApprovalRequired={submitModalTask.approval_required}
           users={users}
@@ -953,6 +1019,7 @@ export function Page() {
           open
           taskId={reassignModalTask.id}
           taskTitle={reassignModalTask.title}
+          companyId={reassignModalTask.company_id}
           currentReviewerId={reassignModalTask.reviewer}
           users={users}
           onClose={() => setReassignModalTask(null)}
@@ -962,6 +1029,63 @@ export function Page() {
             await loadQueueAndSummary()
           }}
         />
+      )}
+
+      {completeOverrideTask && (
+        <div
+          className="modal-backdrop"
+          onClick={() => !completingOverride && setCompleteOverrideTask(null)}
+        >
+          <div
+            className="modal-card"
+            style={{ maxWidth: '500px', width: '94%' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="eyebrow">SRS §7.9 &amp; §8.3 · Complete Approved Task Override</p>
+            <h3 className="modal-title">{completeOverrideTask.task.title}</h3>
+            <div
+              style={{
+                background: '#fffbeb',
+                border: '1px solid #fde68a',
+                color: '#92400e',
+                padding: '0.65rem 0.85rem',
+                borderRadius: '0.45rem',
+                fontSize: '0.83rem',
+                marginBottom: '0.85rem',
+              }}
+            >
+              {completeOverrideTask.reasonError}
+            </div>
+            <div className="form-field" style={{ marginBottom: '0.9rem' }}>
+              <label>Authorized Override Reason *</label>
+              <textarea
+                className="textarea"
+                rows={2}
+                placeholder="Document managerial authorization for completing with open blockers..."
+                value={completeOverrideReason}
+                onChange={(e) => setCompleteOverrideReason(e.target.value)}
+              />
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={completingOverride}
+                onClick={() => setCompleteOverrideTask(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={completingOverride}
+                onClick={handleConfirmCompleteOverride}
+              >
+                {completingOverride ? 'Completing...' : 'Confirm Override & Complete'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <ApprovalChainConfigModal

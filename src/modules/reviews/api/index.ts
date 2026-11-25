@@ -129,6 +129,13 @@ export interface ReviewQueueTask {
   status: Task['status']
   progress: string | number
   due_date: string | null
+  is_overdue?: boolean
+  days_overdue?: number
+  working_days_overdue?: number
+  due_status?: string
+  is_dependency_blocked?: boolean
+  blocking_prerequisites_count?: number
+  open_subtasks_count?: number
   approval_required: boolean
   task_owner: string | null
   task_owner_name: string | null
@@ -249,6 +256,8 @@ export const reviewsApi = {
     notes?: string
     actor?: string
     approval_required?: boolean
+    override_dependencies?: boolean
+    override_reason?: string
     attachment_ids?: string[]
     files?: File[]
   }) => {
@@ -260,6 +269,10 @@ export const reviewsApi = {
       if (payload.actor) formData.append('actor', payload.actor)
       if (payload.approval_required !== undefined) {
         formData.append('approval_required', String(payload.approval_required))
+      }
+      if (payload.override_dependencies) {
+        formData.append('override_dependencies', 'true')
+        if (payload.override_reason) formData.append('override_reason', payload.override_reason)
       }
       payload.files.forEach((f) => formData.append('files', f))
       const token = tokenStorage.getAccess()

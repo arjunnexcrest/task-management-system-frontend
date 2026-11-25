@@ -203,7 +203,23 @@ export function Page() {
   }
 
   async function handleStatusChange(newStatus: TaskDetail['status']) {
-    if (!id) return
+    if (!id || !task) return
+    if (
+      task.status === 'In Review' &&
+      (newStatus === 'Approved' || newStatus === 'Changes Requested')
+    ) {
+      setReviewModalDecision(newStatus)
+      return
+    }
+    if (
+      newStatus === 'In Review' &&
+      ['To Do', 'Assigned', 'In Progress', 'Changes Requested'].includes(task.status) &&
+      !transitionReason.trim() &&
+      !overrideDependencies
+    ) {
+      setShowSubmitReviewModal(true)
+      return
+    }
     setPageError(null)
     setPageSuccess(null)
     try {
@@ -513,11 +529,18 @@ export function Page() {
             value={task.status}
             onChange={(e) => handleStatusChange(e.target.value as TaskDetail['status'])}
           >
-            {TASK_STATUSES.map((st) => (
-              <option key={st} value={st}>
-                {st}
-              </option>
-            ))}
+            {TASK_STATUSES.map((st) => {
+              const isCurrent = st === task.status
+              const isAllowed =
+                isCurrent ||
+                (task.allowed_transitions || []).includes(st) ||
+                (task.status === 'In Review' && (st === 'Approved' || st === 'Changes Requested'))
+              return (
+                <option key={st} value={st}>
+                  {isCurrent ? `Current: ${st}` : isAllowed ? `→ ${st}` : `⛔ ${st} (restricted)`}
+                </option>
+              )
+            })}
           </select>
           <Link to={`/tasks/${task.id}/edit`} className="btn">
             Edit Task
@@ -2372,7 +2395,9 @@ export function Page() {
           </div>
 
           <div className="btn-row" style={{ flexWrap: 'wrap' }}>
-            {task.status !== 'Completed' && task.status !== 'Cancelled' && (
+            {['To Do', 'Assigned', 'In Progress', 'Changes Requested', 'In Review'].includes(
+              task.status,
+            ) && (
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
@@ -2383,6 +2408,15 @@ export function Page() {
                   : task.status === 'In Review'
                     ? 'Update Submission / Reviewer'
                     : '→ Submit for Review'}
+              </button>
+            )}
+            {task.status === 'Approved' && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => handleStatusChange('Completed')}
+              >
+                ✓ Finalize &amp; Mark Completed
               </button>
             )}
             {task.status === 'In Review' && (
@@ -2577,6 +2611,7 @@ export function Page() {
           taskId={task.id}
           taskTitle={task.title}
           projectCode={task.project_code}
+          companyId={task.company_id}
           defaultReviewerId={
             task.approval_chain?.current_reviewer_id || task.reviewer || lookup?.users[0]?.id
           }
@@ -2595,6 +2630,8 @@ export function Page() {
         open={showSubmitReviewModal}
         taskId={task.id}
         taskTitle={task.title}
+        companyId={task.company_id}
+        isDependencyBlocked={task.is_dependency_blocked}
         defaultReviewerId={task.reviewer}
         defaultApprovalRequired={task.approval_required}
         users={lookup?.users || []}
@@ -2610,6 +2647,7 @@ export function Page() {
         open={showReassignReviewerModal}
         taskId={task.id}
         taskTitle={task.title}
+        companyId={task.company_id}
         currentReviewerId={task.reviewer}
         users={lookup?.users || []}
         onClose={() => setShowReassignReviewerModal(false)}

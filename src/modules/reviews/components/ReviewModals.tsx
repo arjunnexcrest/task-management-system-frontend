@@ -14,6 +14,7 @@ interface ReviewDecisionModalProps {
   taskId: string
   taskTitle: string
   projectCode?: string
+  companyId?: string | null
   defaultReviewerId?: string
   users: LookupData['users']
   initialDecision?: 'Approved' | 'Changes Requested' | 'Rejected'
@@ -21,17 +22,25 @@ interface ReviewDecisionModalProps {
   onSuccess: (msg: string) => void
 }
 
+function filterUsersForCompany(users: LookupData['users'], companyId?: string | null) {
+  if (!companyId) return users
+  const scoped = users.filter((u) => !u.company_ids?.length || u.company_ids.includes(companyId))
+  return scoped.length > 0 ? scoped : users
+}
+
 export function ReviewDecisionModal({
   open,
   taskId,
   taskTitle,
   projectCode,
+  companyId,
   defaultReviewerId,
   users,
   initialDecision = 'Approved',
   onClose,
   onSuccess,
 }: ReviewDecisionModalProps) {
+  const scopedUsers = filterUsersForCompany(users, companyId)
   const [decision, setDecision] = useState<'Approved' | 'Changes Requested' | 'Rejected'>(
     initialDecision,
   )
@@ -45,13 +54,13 @@ export function ReviewDecisionModal({
   useEffect(() => {
     if (open) {
       setDecision(initialDecision)
-      setReviewerId(defaultReviewerId || users[0]?.id || '')
+      setReviewerId(defaultReviewerId || scopedUsers[0]?.id || '')
       setComments('')
       setCorrectionReason('')
       setFiles([])
       setError(null)
     }
-  }, [open, initialDecision, defaultReviewerId, users])
+  }, [open, initialDecision, defaultReviewerId, companyId, users])
 
   if (!open) return null
 
@@ -186,7 +195,7 @@ export function ReviewDecisionModal({
               value={reviewerId}
               onChange={(e) => setReviewerId(e.target.value)}
             >
-              {users.map((u) => (
+              {scopedUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.full_name} ({u.designation || u.email})
                 </option>
@@ -262,6 +271,8 @@ interface SubmitForReviewModalProps {
   open: boolean
   taskId: string
   taskTitle: string
+  companyId?: string | null
+  isDependencyBlocked?: boolean
   defaultReviewerId?: string | null
   defaultApprovalRequired?: boolean
   users: LookupData['users']
@@ -273,15 +284,20 @@ export function SubmitForReviewModal({
   open,
   taskId,
   taskTitle,
+  companyId,
+  isDependencyBlocked = false,
   defaultReviewerId,
   defaultApprovalRequired = false,
   users,
   onClose,
   onSuccess,
 }: SubmitForReviewModalProps) {
+  const scopedUsers = filterUsersForCompany(users, companyId)
   const [reviewerId, setReviewerId] = useState(defaultReviewerId || '')
   const [notes, setNotes] = useState('')
   const [approvalReq, setApprovalReq] = useState(defaultApprovalRequired)
+  const [overrideDeps, setOverrideDeps] = useState(false)
+  const [overrideReason, setOverrideReason] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -291,6 +307,8 @@ export function SubmitForReviewModal({
       setReviewerId(defaultReviewerId || '')
       setNotes('')
       setApprovalReq(defaultApprovalRequired)
+      setOverrideDeps(false)
+      setOverrideReason('')
       setFiles([])
       setError(null)
     }
@@ -300,6 +318,10 @@ export function SubmitForReviewModal({
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    if (overrideDeps && !overrideReason.trim()) {
+      setError('An authorized override reason is required to bypass unsatisfied prerequisite dependencies.')
+      return
+    }
     setSubmitting(true)
     setError(null)
     try {
@@ -308,6 +330,8 @@ export function SubmitForReviewModal({
         reviewer: reviewerId || null,
         notes: notes.trim() || undefined,
         approval_required: approvalReq,
+        override_dependencies: overrideDeps || undefined,
+        override_reason: overrideDeps ? overrideReason.trim() : undefined,
         files,
       })
       onSuccess(
@@ -369,13 +393,49 @@ export function SubmitForReviewModal({
               onChange={(e) => setReviewerId(e.target.value)}
             >
               <option value="">Auto-assign from Configured Approval Chain</option>
-              {users.map((u) => (
+              {scopedUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.full_name} ({u.designation || u.email})
                 </option>
               ))}
             </select>
           </div>
+
+          {isDependencyBlocked && (
+            <div
+              style={{
+                background: '#fffbeb',
+                border: '1px solid #fde68a',
+                color: '#92400e',
+                padding: '0.65rem 0.85rem',
+                borderRadius: '0.45rem',
+                fontSize: '0.82rem',
+                display: 'grid',
+                gap: '0.45rem',
+              }}
+            >
+              <div>
+                <strong>Prerequisite Dependency Active (SRS §7.9):</strong> One or more prerequisite
+                tasks are not yet satisfied.
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={overrideDeps}
+                  onChange={(e) => setOverrideDeps(e.target.checked)}
+                />
+                <span>Provide Authorized Dependency Override</span>
+              </label>
+              {overrideDeps && (
+                <input
+                  className="input"
+                  placeholder="Required authorized override reason..."
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                />
+              )}
+            </div>
+          )}
 
           <label
             style={{
@@ -437,6 +497,7 @@ interface ReassignReviewerModalProps {
   open: boolean
   taskId: string
   taskTitle: string
+  companyId?: string | null
   currentReviewerId?: string | null
   users: LookupData['users']
   onClose: () => void
@@ -447,11 +508,13 @@ export function ReassignReviewerModal({
   open,
   taskId,
   taskTitle,
+  companyId,
   currentReviewerId,
   users,
   onClose,
   onSuccess,
 }: ReassignReviewerModalProps) {
+  const scopedUsers = filterUsersForCompany(users, companyId)
   const [newReviewerId, setNewReviewerId] = useState('')
   const [reason, setReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -459,12 +522,12 @@ export function ReassignReviewerModal({
 
   useEffect(() => {
     if (open) {
-      const candidate = users.find((u) => u.id !== currentReviewerId) || users[0]
+      const candidate = scopedUsers.find((u) => u.id !== currentReviewerId) || scopedUsers[0]
       setNewReviewerId(candidate?.id || '')
       setReason('')
       setError(null)
     }
-  }, [open, currentReviewerId, users])
+  }, [open, currentReviewerId, companyId, users])
 
   if (!open) return null
 
@@ -538,7 +601,7 @@ export function ReassignReviewerModal({
               onChange={(e) => setNewReviewerId(e.target.value)}
               required
             >
-              {users.map((u) => (
+              {scopedUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.full_name} ({u.designation || u.email})
                 </option>
@@ -613,33 +676,46 @@ export function ApprovalChainConfigModal({
   useEffect(() => {
     if (!open) return
     setScope(initialTaskId ? 'task' : 'company')
-    const cid = companies[0]?.id || ''
-    setCompanyId(cid)
-    if (projects[0]?.id) setProjectId(projects[0].id)
+    if (!companyId && companies[0]?.id) setCompanyId(companies[0].id)
+    if (!projectId && projects[0]?.id) setProjectId(projects[0].id)
     setError(null)
+  }, [open, initialTaskId, companies, projects])
+
+  useEffect(() => {
+    if (!open) return
+    const query =
+      scope === 'task' && initialTaskId
+        ? { task: initialTaskId }
+        : scope === 'project' && projectId
+          ? { project: projectId }
+          : companyId
+            ? { company: companyId }
+            : undefined
 
     reviewsApi
-      .getApprovalChainRules(
-        initialTaskId ? { task: initialTaskId } : cid ? { company: cid } : undefined,
-      )
+      .getApprovalChainRules(query)
       .then((res) => {
-        if (initialTaskId && res.approval_chain) {
+        if (scope === 'task' && res.approval_chain) {
           setLevels(res.approval_chain.levels)
           setEscalationHours(String(res.approval_chain.escalation_hours || 48))
           setAllowReassign(Boolean(res.approval_chain.allow_reviewer_reassignment))
         } else if (res.rules) {
-          setLevels(res.rules.default_chain || ['Reviewer'])
+          setLevels(
+            scope === 'project'
+              ? res.rules.levels || res.rules.default_chain || ['Reviewer']
+              : res.rules.default_chain || ['Reviewer'],
+          )
           setEscalationHours(String(res.rules.escalation_hours || 48))
           setAllowReassign(Boolean(res.rules.allow_reviewer_reassignment))
           const pc = res.rules.priority_chains || {}
-          if (pc.Critical?.length) setCriticalChain(pc.Critical.join(', '))
-          if (pc.High?.length) setHighChain(pc.High.join(', '))
-          if (pc.Medium?.length) setMediumChain(pc.Medium.join(', '))
-          if (pc.Low?.length) setLowChain(pc.Low.join(', '))
+          setCriticalChain((pc.Critical || ['Team Leader', 'Department Head', 'Project Manager']).join(', '))
+          setHighChain((pc.High || ['Team Leader', 'Project Manager']).join(', '))
+          setMediumChain((pc.Medium || ['Reviewer']).join(', '))
+          setLowChain((pc.Low || ['Reviewer']).join(', '))
         }
       })
       .catch(() => {})
-  }, [open, initialTaskId, companies, projects])
+  }, [open, scope, companyId, projectId, initialTaskId])
 
   if (!open) return null
 

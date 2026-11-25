@@ -801,8 +801,13 @@ export const tasksApi = {
   getAttachmentUrl: (attachmentId: string, inline = false) =>
     `${BASE_URL}/tasks/attachments/${attachmentId}/download/${inline ? '?inline=1' : ''}`,
 
-  getKanban: (projectId?: string) => {
-    const query = projectId ? `?project=${projectId}` : ''
+  getKanban: (params?: string | Record<string, string>) => {
+    if (!params) return request<Record<string, Task[]>>('/tasks/kanban/')
+    if (typeof params === 'string') {
+      return request<Record<string, Task[]>>(`/tasks/kanban/?project=${params}`)
+    }
+    const cleaned = Object.entries(params).filter(([, v]) => Boolean(v))
+    const query = cleaned.length > 0 ? `?${new URLSearchParams(cleaned).toString()}` : ''
     return request<Record<string, Task[]>>(`/tasks/kanban/${query}`)
   },
 }
