@@ -4,6 +4,7 @@ import { authApi } from '@/modules/accounts/api'
 import { companiesApi, type Company } from '@/modules/companies/api'
 import { projectsApi, type LookupData } from '@/modules/projects/api'
 import { useAuth } from '@/modules/accounts/context/AuthContext'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { ApiError } from '@/api/client'
 import type { User, UserStatus } from '@/types'
 
@@ -18,6 +19,8 @@ const ROLE_OPTIONS = [
 
 export function Page() {
   const { user: currentUser, isAuthenticated } = useAuth()
+  const { can } = usePermissions()
+  const canManageUsers = can('can_manage_users')
   const [users, setUsers] = useState<User[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
   const [lookup, setLookup] = useState<LookupData | null>(null)
@@ -165,13 +168,15 @@ export function Page() {
               My Profile
             </Link>
           )}
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setShowCreate(!showCreate)}
-          >
-            {showCreate ? 'Close Form' : '+ New Employee'}
-          </button>
+          {canManageUsers && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setShowCreate(!showCreate)}
+            >
+              {showCreate ? 'Close Form' : '+ New Employee'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -193,7 +198,7 @@ export function Page() {
         </div>
       )}
 
-      {showCreate && (
+      {canManageUsers && showCreate && (
         <form onSubmit={handleCreateEmployee} className="card">
           <h3>Create Employee Account</h3>
           <div className="form-grid">
@@ -486,31 +491,35 @@ export function Page() {
                       <Link to={`/employees/${u.id}`} className="btn btn-sm">
                         Profile
                       </Link>
-                      {u.account_status !== 'Active' ? (
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={() => handleLifecycleAction(u, 'activate')}
-                        >
-                          Activate
-                        </button>
-                      ) : currentUser?.id !== u.id ? (
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={() => handleLifecycleAction(u, 'deactivate')}
-                        >
-                          Deactivate
-                        </button>
-                      ) : null}
-                      {(u.failed_login_attempts ?? 0) > 0 && (
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={() => handleLifecycleAction(u, 'unlock')}
-                        >
-                          Unlock
-                        </button>
+                      {canManageUsers && (
+                        <>
+                          {u.account_status !== 'Active' ? (
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={() => handleLifecycleAction(u, 'activate')}
+                            >
+                              Activate
+                            </button>
+                          ) : currentUser?.id !== u.id ? (
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={() => handleLifecycleAction(u, 'deactivate')}
+                            >
+                              Deactivate
+                            </button>
+                          ) : null}
+                          {(u.failed_login_attempts ?? 0) > 0 && (
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={() => handleLifecycleAction(u, 'unlock')}
+                            >
+                              Unlock
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </td>

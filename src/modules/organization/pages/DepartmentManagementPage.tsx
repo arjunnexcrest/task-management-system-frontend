@@ -1,9 +1,13 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { type LookupData, projectsApi } from '@/modules/projects/api'
 import { type Department, organizationApi } from '@/modules/organization/api'
 
 export function Page() {
+  const { can } = usePermissions()
+  const canCreateDepts = can('can_create_departments')
+  const canManageDepts = can('can_manage_departments')
   const [lookup, setLookup] = useState<LookupData | null>(null)
   const [departments, setDepartments] = useState<Department[]>([])
   const [companyFilter, setCompanyFilter] = useState('')
@@ -270,8 +274,10 @@ export function Page() {
         </div>
       )}
 
-      <div className="form-grid" style={{ marginBottom: '1.25rem' }}>
-        <form className="card" onSubmit={handleCreateDepartment}>
+      {(canCreateDepts || canManageDepts) && (
+        <div className="form-grid" style={{ marginBottom: '1.25rem' }}>
+          {canCreateDepts && (
+            <form className="card" onSubmit={handleCreateDepartment}>
           <h3>Create Department &amp; Assign Head</h3>
           <div className="form-grid" style={{ marginTop: '0.75rem' }}>
             <div className="form-field">
@@ -324,14 +330,16 @@ export function Page() {
               </select>
             </div>
           </div>
-          <div className="btn-row" style={{ marginTop: '1rem' }}>
-            <button type="submit" className="btn btn-primary">
-              + Create Department
-            </button>
-          </div>
-        </form>
+            <div className="btn-row" style={{ marginTop: '1rem' }}>
+              <button type="submit" className="btn btn-primary">
+                + Create Department
+              </button>
+            </div>
+          </form>
+          )}
 
-        <form className="card" onSubmit={handleTransferEmployee}>
+          {canManageDepts && (
+          <form className="card" onSubmit={handleTransferEmployee}>
           <h3>Assign / Transfer Employee to Department (SRS §5.1)</h3>
           <div className="form-grid" style={{ marginTop: '0.75rem' }}>
             <div className="form-field">
@@ -398,7 +406,9 @@ export function Page() {
             </button>
           </div>
         </form>
+          )}
       </div>
+      )}
 
       <div className="card">
         <form className="filter-bar" onSubmit={handleSearchSubmit}>
@@ -451,8 +461,8 @@ export function Page() {
                 <th>Department Head</th>
                 <th>Teams / Members</th>
                 <th>Projects</th>
-                <th>Assign / Change Head</th>
-                <th>Actions</th>
+                {canCreateDepts && <th>Assign / Change Head</th>}
+                {canCreateDepts && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -514,57 +524,61 @@ export function Page() {
                         {d.mapped_projects_count} project(s)
                       </span>
                     </td>
-                    <td>
-                      <select
-                        className="select"
-                        disabled={d.status !== 'Active'}
-                        value={d.department_head_id || ''}
-                        onChange={(e) => handleAssignHead(d.id, e.target.value)}
-                      >
-                        <option value="">Unassigned</option>
-                        {deptCompanyUsers.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.full_name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <div className="btn-row">
-                        {isEditing ? (
-                          <>
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              disabled={savingEdit}
-                              onClick={() => handleSaveEdit(d.id)}
-                            >
-                              Save
-                            </button>
-                            <button type="button" className="btn" onClick={cancelEdit}>
-                              Cancel
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              className="btn"
-                              onClick={() => startEdit(d)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="btn"
-                              onClick={() => handleToggleStatus(d)}
-                            >
-                              {d.status === 'Active' ? 'Deactivate' : 'Activate'}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
+                    {canCreateDepts && (
+                      <td>
+                        <select
+                          className="select"
+                          disabled={d.status !== 'Active'}
+                          value={d.department_head_id || ''}
+                          onChange={(e) => handleAssignHead(d.id, e.target.value)}
+                        >
+                          <option value="">Unassigned</option>
+                          {deptCompanyUsers.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.full_name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    )}
+                    {canCreateDepts && (
+                      <td>
+                        <div className="btn-row">
+                          {isEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                disabled={savingEdit}
+                                onClick={() => handleSaveEdit(d.id)}
+                              >
+                                Save
+                              </button>
+                              <button type="button" className="btn" onClick={cancelEdit}>
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => startEdit(d)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => handleToggleStatus(d)}
+                              >
+                                {d.status === 'Active' ? 'Deactivate' : 'Activate'}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 )
               })}

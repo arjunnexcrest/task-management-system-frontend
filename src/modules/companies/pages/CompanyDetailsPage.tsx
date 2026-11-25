@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { companiesApi, type Company } from '@/modules/companies/api'
 import { authApi } from '@/modules/accounts/api'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { ApiError } from '@/api/client'
 import type { User } from '@/types'
 
@@ -16,6 +17,8 @@ const ROLE_OPTIONS = [
 
 export function Page() {
   const { id } = useParams<{ id: string }>()
+  const { can } = usePermissions()
+  const canManageUsers = can('can_manage_users')
   const [company, setCompany] = useState<Company | null>(null)
   const [users, setUsers] = useState<User[]>([])
   const [allUsers, setAllUsers] = useState<User[]>([])
@@ -166,13 +169,15 @@ export function Page() {
           >
             {company.is_active ? 'Active' : 'Inactive'}
           </span>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setShowAddUser(!showAddUser)}
-          >
-            {showAddUser ? 'Close Form' : '+ Add User'}
-          </button>
+          {canManageUsers && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setShowAddUser(!showAddUser)}
+            >
+              {showAddUser ? 'Close Form' : '+ Add User'}
+            </button>
+          )}
           <Link to="/companies" className="btn">
             ← All Companies
           </Link>
@@ -197,7 +202,7 @@ export function Page() {
         </div>
       )}
 
-      {showAddUser && (
+      {canManageUsers && showAddUser && (
         <form onSubmit={handleCreateUser} className="card">
           <h3>Create New User in {company.name}</h3>
           <div className="form-grid">
@@ -329,7 +334,7 @@ export function Page() {
           }}
         >
           <h3 style={{ margin: 0 }}>Company Users ({users.length})</h3>
-          {assignableUsers.length > 0 && (
+          {canManageUsers && assignableUsers.length > 0 && (
             <form
               onSubmit={handleAssignExisting}
               style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}

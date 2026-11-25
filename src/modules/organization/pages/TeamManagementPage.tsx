@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { type LookupData, projectsApi } from '@/modules/projects/api'
 import {
   type Team,
@@ -8,6 +9,9 @@ import {
 } from '@/modules/organization/api'
 
 export function Page() {
+  const { can } = usePermissions()
+  const canManageTeams = can('can_manage_teams')
+  const canManageTeamMembers = can('can_manage_team_members')
   const [lookup, setLookup] = useState<LookupData | null>(null)
   const [teams, setTeams] = useState<Team[]>([])
   const [companyFilter, setCompanyFilter] = useState('')
@@ -328,8 +332,10 @@ export function Page() {
         </div>
       )}
 
-      <div className="form-grid" style={{ marginBottom: '1.25rem' }}>
-        <form className="card" onSubmit={handleCreateTeam}>
+      {(canManageTeams || canManageTeamMembers) && (
+        <div className="form-grid" style={{ marginBottom: '1.25rem' }}>
+          {canManageTeams && (
+            <form className="card" onSubmit={handleCreateTeam}>
           <h3>Create Team &amp; Assign Team Leader</h3>
           <div className="form-grid" style={{ marginTop: '0.75rem' }}>
             <div className="form-field">
@@ -391,7 +397,9 @@ export function Page() {
             </button>
           </div>
         </form>
+          )}
 
+          {canManageTeamMembers && (
         <form className="card" onSubmit={handleAddMember}>
           <h3>Manage Team Members (SRS §5.2)</h3>
           <div className="form-grid" style={{ marginTop: '0.75rem' }}>
@@ -499,7 +507,9 @@ export function Page() {
             </div>
           )}
         </form>
+          )}
       </div>
+      )}
 
       <div className="card">
         <form className="filter-bar" onSubmit={handleSearchSubmit}>
@@ -567,8 +577,8 @@ export function Page() {
                 <th>Team Leader</th>
                 <th>Members</th>
                 <th>Projects</th>
-                <th>Assign / Change Leader</th>
-                <th>Actions</th>
+                {canManageTeams && <th>Assign / Change Leader</th>}
+                {canManageTeams && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -631,57 +641,61 @@ export function Page() {
                         {t.mapped_projects_count} project(s)
                       </span>
                     </td>
-                    <td>
-                      <select
-                        className="select"
-                        disabled={t.status !== 'Active'}
-                        value={t.team_leader_id || ''}
-                        onChange={(e) => handleAssignLeader(t.id, e.target.value)}
-                      >
-                        <option value="">Unassigned</option>
-                        {teamCompanyUsers.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.full_name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <div className="btn-row">
-                        {isEditing ? (
-                          <>
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              disabled={savingEdit}
-                              onClick={() => handleSaveEdit(t.id)}
-                            >
-                              Save
-                            </button>
-                            <button type="button" className="btn" onClick={cancelEdit}>
-                              Cancel
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              className="btn"
-                              onClick={() => startEdit(t)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="btn"
-                              onClick={() => handleToggleStatus(t)}
-                            >
-                              {t.status === 'Active' ? 'Deactivate' : 'Activate'}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
+                    {canManageTeams && (
+                      <td>
+                        <select
+                          className="select"
+                          disabled={t.status !== 'Active'}
+                          value={t.team_leader_id || ''}
+                          onChange={(e) => handleAssignLeader(t.id, e.target.value)}
+                        >
+                          <option value="">Unassigned</option>
+                          {teamCompanyUsers.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.full_name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    )}
+                    {canManageTeams && (
+                      <td>
+                        <div className="btn-row">
+                          {isEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                disabled={savingEdit}
+                                onClick={() => handleSaveEdit(t.id)}
+                              >
+                                Save
+                              </button>
+                              <button type="button" className="btn" onClick={cancelEdit}>
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => startEdit(t)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => handleToggleStatus(t)}
+                              >
+                                {t.status === 'Active' ? 'Deactivate' : 'Activate'}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 )
               })}

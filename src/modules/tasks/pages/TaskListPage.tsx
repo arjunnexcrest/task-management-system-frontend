@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { type LookupData, type Project, projectsApi } from '@/modules/projects/api'
 import { type Task, tasksApi } from '@/modules/tasks/api'
 
@@ -29,6 +31,11 @@ function badgeClass(value: string) {
 }
 
 export function Page() {
+  const { can } = usePermissions()
+  const canCreateTasks = can('can_create_tasks')
+  const canEditTasks = can('can_edit_tasks')
+  const canDeleteTasks = can('can_delete_tasks')
+  const canAssignTasks = can('can_assign_tasks')
   const [lookup, setLookup] = useState<LookupData | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
@@ -46,6 +53,10 @@ export function Page() {
   const [priorityFilter, setPriorityFilter] = useState('')
   const [subtaskFilter, setSubtaskFilter] = useState<'ALL' | 'TOP' | 'SUB'>('ALL')
   const [overdueOnly, setOverdueOnly] = useState(false)
+  const [dueStatusFilter, setDueStatusFilter] = useState('')
+  const [depBlockedOnly, setDepBlockedOnly] = useState(false)
+  const [checkingDeadlines, setCheckingDeadlines] = useState(false)
+  const [deadlineScanResult, setDeadlineScanResult] = useState<string | null>(null)
 
   // SRS §7.2, §7.4 & §7.10 Bulk Assignment, Priority & Due Dates
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([])
@@ -56,6 +67,8 @@ export function Page() {
   const [bulkReplaceExisting, setBulkReplaceExisting] = useState(false)
   const [bulkSuccess, setBulkSuccess] = useState<string | null>(null)
   const [bulkSaving, setBulkSaving] = useState(false)
+  const [taskToDelete, setTaskToDelete] = useState<Task | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     Promise.all([projectsApi.getLookup(), projectsApi.listProjects()])
@@ -78,6 +91,8 @@ export function Page() {
     priorityFilter,
     subtaskFilter,
     overdueOnly,
+    dueStatusFilter,
+    depBlockedOnly,
   ])
 
   async function loadTasks() {
@@ -95,6 +110,8 @@ export function Page() {
       if (subtaskFilter === 'TOP') params.is_subtask = 'false'
       if (subtaskFilter === 'SUB') params.is_subtask = 'true'
       if (overdueOnly) params.overdue = 'true'
+      if (dueStatusFilter) params.due_status = dueStatusFilter
+      if (depBlockedOnly) params.dependency_blocked = 'true'
       if (search.trim()) params.search = search.trim()
 
       const data = await tasksApi.listTasks(params)
@@ -106,18 +123,39 @@ export function Page() {
     }
   }
 
-  async function handleDeleteTask(task: Task) {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${task.is_subtask ? 'subtask' : 'task'} "${task.title}"?`,
-    )
-    if (!confirmed) return
+  async function handleCheckDeadlines() {
+    setCheckingDeadlines(true)
+    setError(null)
+    setDeadlineScanResult(null)
+    try {
+      const res = await tasksApi.checkDeadlines({
+        company: companyFilter || undefined,
+        project: projectFilter || undefined,
+      })
+      setDeadlineScanResult(
+        `Scanned ${res.scanned_tasks} open task(s): ${res.overdue_tasks_found} overdue, ${res.upcoming_deadlines_found} upcoming deadline(s), ${res.dependency_warnings_sent} dependency delay warning(s), ${res.notifications_created} new notification(s) sent (${res.skipped_duplicates} recent duplicate(s) skipped).`,
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to scan deadlines')
+    } finally {
+      setCheckingDeadlines(false)
+    }
+  }
+
+  async function confirmDeleteTask() {
+    if (!taskToDelete) return
+    setDeleting(true)
     setError(null)
     try {
-      await tasksApi.deleteTask(task.id)
-      setSelectedTaskIds((prev) => prev.filter((id) => id !== task.id))
+      await tasksApi.deleteTask(taskToDelete.id)
+      setSelectedTaskIds((prev) => prev.filter((id) => id !== taskToDelete.id))
+      setTaskToDelete(null)
       await loadTasks()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete task')
+      setTaskToDelete(null)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -178,13 +216,28 @@ export function Page() {
             companies and projects.
           </p>
         </div>
-        <div className="btn-row">
+        <div className="btn-row" style={{ flexWrap: 'wrap' }}>
+          {canAssignTasks && (
+            <button
+              type="button"
+              className="btn"
+              disabled={checkingDeadlines}
+              onClick={handleCheckDeadlines}
+            >
+              {checkingDeadlines ? 'Scanning Deadlines...' : 'Check Deadlines & Alerts'}
+            </button>
+          )}
+          <Link to="/calendar" className="btn">
+            Schedule Calendar
+          </Link>
           <Link to="/kanban" className="btn">
             Kanban Board
           </Link>
-          <Link to="/tasks/new" className="btn btn-primary">
-            + Create Task / Subtask
-          </Link>
+          {canCreateTasks && (
+            <Link to="/tasks/new" className="btn btn-primary">
+              + Create Task / Subtask
+            </Link>
+          )}
         </div>
       </div>
 
@@ -192,19 +245,36 @@ export function Page() {
         <div className="stat-card">
           <div className="stat-label">Total Tasks &amp; Subtasks</div>
           <div className="stat-value">{tasks.length}</div>
+          <div style={{ fontSize: '0.76rem', color: 'var(--muted)' }}>
+            {tasks.filter((t) => !t.is_subtask).length} primary ·{' '}
+            {tasks.filter((t) => t.is_subtask).length} subtasks
+          </div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Top-Level Tasks</div>
-          <div className="stat-value">{tasks.filter((t) => !t.is_subtask).length}</div>
+          <div className="stat-label">Overdue Tasks</div>
+          <div className="stat-value" style={{ color: '#991b1b' }}>
+            {tasks.filter((t) => t.is_overdue).length}
+          </div>
+          <div style={{ fontSize: '0.76rem', color: 'var(--muted)' }}>
+            {tasks.filter((t) => t.overdue_severity === 'Critical').length} critical overdue
+          </div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Subtasks (`parent_task_id`)</div>
-          <div className="stat-value">{tasks.filter((t) => t.is_subtask).length}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Overdue / Critical</div>
+          <div className="stat-label">Due Today / Soon</div>
           <div className="stat-value">
-            {tasks.filter((t) => t.is_overdue || t.priority === 'Critical').length}
+            {tasks.filter((t) => t.due_status === 'Due Today' || t.due_status === 'Due Soon').length}
+          </div>
+          <div style={{ fontSize: '0.76rem', color: 'var(--muted)' }}>
+            {tasks.filter((t) => t.due_status === 'Due Today').length} due today
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Dependency Blocked</div>
+          <div className="stat-value" style={{ color: '#92400e' }}>
+            {tasks.filter((t) => t.is_dependency_blocked).length}
+          </div>
+          <div style={{ fontSize: '0.76rem', color: 'var(--muted)' }}>
+            Waiting on prerequisite rules
           </div>
         </div>
       </div>
@@ -329,6 +399,19 @@ export function Page() {
             <option value="TOP">Top-Level Tasks Only</option>
             <option value="SUB">Subtasks Only</option>
           </select>
+          <select
+            className="select"
+            value={dueStatusFilter}
+            onChange={(e) => setDueStatusFilter(e.target.value)}
+          >
+            <option value="">All Due Statuses</option>
+            <option value="Overdue">Overdue</option>
+            <option value="Due Today">Due Today</option>
+            <option value="Due Soon">Due Soon</option>
+            <option value="On Track">On Track</option>
+            <option value="Completed">Completed</option>
+            <option value="No Due Date">No Due Date</option>
+          </select>
           <label
             style={{
               display: 'flex',
@@ -345,12 +428,43 @@ export function Page() {
             />
             <span>Overdue Only</span>
           </label>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              fontSize: '0.84rem',
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={depBlockedOnly}
+              onChange={(e) => setDepBlockedOnly(e.target.checked)}
+            />
+            <span>Dependency Blocked</span>
+          </label>
           <button className="btn" onClick={loadTasks}>
             Search
           </button>
         </div>
 
         {error && <p style={{ color: '#991b1b', marginBottom: '0.75rem' }}>{error}</p>}
+        {deadlineScanResult && (
+          <div
+            style={{
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              color: '#1e3a8a',
+              padding: '0.65rem 1rem',
+              borderRadius: '0.5rem',
+              marginBottom: '0.75rem',
+              fontSize: '0.85rem',
+            }}
+          >
+            {deadlineScanResult}
+          </div>
+        )}
         {bulkSuccess && (
           <div
             style={{
@@ -367,7 +481,7 @@ export function Page() {
           </div>
         )}
 
-        {selectedTaskIds.length > 0 && (
+        {canAssignTasks && selectedTaskIds.length > 0 && (
           <div
             style={{
               display: 'flex',
@@ -545,6 +659,25 @@ export function Page() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                       <span className={badgeClass(t.status)}>{t.status}</span>
                       <span className={badgeClass(t.priority)}>{t.priority}</span>
+                      {t.is_dependency_blocked && (
+                        <span
+                          className="badge"
+                          style={{
+                            background: '#fef3c7',
+                            color: '#92400e',
+                            border: '1px solid #fde68a',
+                            fontSize: '0.68rem',
+                          }}
+                          title="Waiting on unsatisfied prerequisite task dependencies"
+                        >
+                          Dep. Blocked ({t.blocking_prerequisites_count || 1})
+                        </span>
+                      )}
+                      {(t.downstream_dependents_count || 0) > 0 && (
+                        <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>
+                          {t.downstream_dependents_count} downstream task(s)
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td style={{ fontSize: '0.82rem' }}>
@@ -586,17 +719,32 @@ export function Page() {
                   <td style={{ fontSize: '0.82rem' }}>
                     <div>{t.due_date || '—'}</div>
                     {t.is_overdue ? (
-                      <span className="badge badge-critical" style={{ fontSize: '0.7rem' }}>
-                        Overdue ({Math.abs(t.days_remaining || 0)}d)
-                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginTop: '0.15rem' }}>
+                        <span className="badge badge-critical" style={{ fontSize: '0.7rem' }}>
+                          Overdue {t.days_overdue ?? Math.abs(t.days_remaining || 0)}d
+                          {t.overdue_severity && t.overdue_severity !== 'None'
+                            ? ` · ${t.overdue_severity}`
+                            : ''}
+                        </span>
+                        <span style={{ fontSize: '0.71rem', color: '#991b1b' }}>
+                          {t.working_days_overdue ?? 0} working day(s) late
+                        </span>
+                      </div>
                     ) : t.due_status === 'Due Today' ? (
                       <span className="badge badge-medium" style={{ fontSize: '0.7rem' }}>
                         Due Today
                       </span>
                     ) : t.due_status === 'Due Soon' ? (
-                      <span className="badge badge-high" style={{ fontSize: '0.7rem' }}>
-                        Due in {t.days_remaining}d
-                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', marginTop: '0.15rem' }}>
+                        <span className="badge badge-high" style={{ fontSize: '0.7rem' }}>
+                          Due in {t.days_remaining}d
+                        </span>
+                        {t.working_days_remaining !== null && t.working_days_remaining !== undefined && (
+                          <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>
+                            {t.working_days_remaining} work day(s) left
+                          </span>
+                        )}
+                      </div>
                     ) : null}
                   </td>
                   <td>
@@ -604,10 +752,12 @@ export function Page() {
                       <Link to={`/tasks/${t.id}`} className="btn btn-sm">
                         View
                       </Link>
-                      <Link to={`/tasks/${t.id}/edit`} className="btn btn-sm">
-                        Edit
-                      </Link>
-                      {!t.is_subtask && (
+                      {canEditTasks && (
+                        <Link to={`/tasks/${t.id}/edit`} className="btn btn-sm">
+                          Edit
+                        </Link>
+                      )}
+                      {canCreateTasks && !t.is_subtask && (
                         <Link
                           to={`/tasks/new?project=${t.project}&parent=${t.id}`}
                           className="btn btn-sm"
@@ -615,14 +765,16 @@ export function Page() {
                           + Subtask
                         </Link>
                       )}
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        style={{ color: '#991b1b', borderColor: '#fecaca' }}
-                        onClick={() => handleDeleteTask(t)}
-                      >
-                        Delete
-                      </button>
+                      {canDeleteTasks && (
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          style={{ color: '#991b1b', borderColor: '#fecaca' }}
+                          onClick={() => setTaskToDelete(t)}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -638,6 +790,20 @@ export function Page() {
           </table>
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(taskToDelete)}
+        title={taskToDelete?.is_subtask ? 'Delete Subtask' : 'Delete Task'}
+        message={
+          taskToDelete
+            ? `Permanently delete "${taskToDelete.title}"${taskToDelete.subtasks_count > 0 ? ` and its ${taskToDelete.subtasks_count} subtask(s)` : ''}? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete Task"
+        loading={deleting}
+        onConfirm={confirmDeleteTask}
+        onCancel={() => setTaskToDelete(null)}
+      />
     </div>
   )
 }

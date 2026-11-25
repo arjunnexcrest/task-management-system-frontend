@@ -120,6 +120,8 @@ export interface ProjectPhase {
   owner_name: string | null
   status: 'Not Started' | 'In Progress' | 'Completed'
   progress: string | number
+  tasks_count?: number
+  completed_tasks_count?: number
 }
 
 export interface MilestoneTask {
@@ -135,6 +137,8 @@ export interface MilestoneDependency {
   milestone: string
   depends_on_milestone: string
   depends_on_title: string
+  depends_on_status?: string
+  depends_on_target_date?: string | null
 }
 
 export interface ProjectMilestone {
@@ -149,6 +153,9 @@ export interface ProjectMilestone {
   status: 'Pending' | 'In Progress' | 'Completed' | 'Delayed'
   approval_required: boolean
   progress: string | number
+  is_overdue?: boolean
+  days_remaining?: number | null
+  is_blocked_by_dependencies?: boolean
   milestone_tasks: MilestoneTask[]
   dependencies: MilestoneDependency[]
 }
@@ -564,6 +571,12 @@ export const projectsApi = {
       body: JSON.stringify(payload),
     }),
 
+  updatePhase: (id: string, payload: Partial<ProjectPhase>) =>
+    request<ProjectPhase>(`/projects/phases/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
   deletePhase: (id: string) =>
     request<void>(`/projects/phases/${id}/`, {
       method: 'DELETE',
@@ -583,8 +596,44 @@ export const projectsApi = {
       body: JSON.stringify(payload),
     }),
 
+  updateMilestone: (id: string, payload: Partial<ProjectMilestone>) =>
+    request<ProjectMilestone>(`/projects/milestones/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  completeMilestone: (id: string) =>
+    request<ProjectMilestone>(`/projects/milestones/${id}/complete/`, {
+      method: 'POST',
+    }),
+
   deleteMilestone: (id: string) =>
     request<void>(`/projects/milestones/${id}/`, {
+      method: 'DELETE',
+    }),
+
+  linkMilestoneTask: (milestoneId: string, taskId: string) =>
+    request<MilestoneTask>('/projects/milestone-tasks/', {
+      method: 'POST',
+      body: JSON.stringify({ milestone: milestoneId, task: taskId }),
+    }),
+
+  unlinkMilestoneTask: (milestoneTaskId: string) =>
+    request<void>(`/projects/milestone-tasks/${milestoneTaskId}/`, {
+      method: 'DELETE',
+    }),
+
+  addMilestoneDependency: (milestoneId: string, dependsOnMilestoneId: string) =>
+    request<MilestoneDependency>('/projects/milestone-dependencies/', {
+      method: 'POST',
+      body: JSON.stringify({
+        milestone: milestoneId,
+        depends_on_milestone: dependsOnMilestoneId,
+      }),
+    }),
+
+  removeMilestoneDependency: (dependencyId: string) =>
+    request<void>(`/projects/milestone-dependencies/${dependencyId}/`, {
       method: 'DELETE',
     }),
 

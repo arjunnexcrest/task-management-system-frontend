@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { type LookupData, type Project, projectsApi } from '@/modules/projects/api'
 
 function badgeClass(value: string) {
@@ -12,6 +14,11 @@ function badgeClass(value: string) {
 }
 
 export function Page() {
+  const { can } = usePermissions()
+  const canCreateProjects = can('can_create_projects')
+  const canEditProjects = can('can_edit_projects')
+  const canDeleteProjects = can('can_delete_projects')
+  const canManageAssignments = can('can_manage_project_assignments')
   const [lookup, setLookup] = useState<LookupData | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -22,6 +29,8 @@ export function Page() {
   const [priorityFilter, setPriorityFilter] = useState('')
   const [departmentFilter, setDepartmentFilter] = useState('')
   const [memberFilter, setMemberFilter] = useState('')
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     projectsApi.getLookup().then(setLookup).catch(() => {})
@@ -51,16 +60,18 @@ export function Page() {
     }
   }
 
-  async function handleDelete(project: Project) {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete project "${project.code} — ${project.name}"?`,
-    )
-    if (!confirmed) return
+  async function confirmDeleteProject() {
+    if (!projectToDelete) return
+    setDeleting(true)
     try {
-      await projectsApi.deleteProject(project.id)
+      await projectsApi.deleteProject(projectToDelete.id)
+      setProjectToDelete(null)
       await loadProjects()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete project')
+      setProjectToDelete(null)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -84,11 +95,13 @@ export function Page() {
             and progress tracking.
           </p>
         </div>
-        <div className="btn-row">
-          <Link to="/projects/new" className="btn btn-primary">
-            + Create Project
-          </Link>
-        </div>
+        {canCreateProjects && (
+          <div className="btn-row">
+            <Link to="/projects/new" className="btn btn-primary">
+              + Create Project
+            </Link>
+          </div>
+        )}
       </div>
 
       <div className="stats-grid">
@@ -290,13 +303,17 @@ export function Page() {
                       <Link to={`/projects/${p.id}/team`} className="btn btn-sm">
                         Team &amp; Members
                       </Link>
-                      <Link to={`/projects/${p.id}/assignments`} className="btn btn-sm">
-                        PM &amp; Depts
-                      </Link>
-                      <Link to={`/projects/${p.id}/edit`} className="btn btn-sm">
-                        Edit
-                      </Link>
-                      {p.status !== 'Archived' && (
+                      {canManageAssignments && (
+                        <Link to={`/projects/${p.id}/assignments`} className="btn btn-sm">
+                          PM &amp; Depts
+                        </Link>
+                      )}
+                      {canEditProjects && (
+                        <Link to={`/projects/${p.id}/edit`} className="btn btn-sm">
+                          Edit
+                        </Link>
+                      )}
+                      {canEditProjects && p.status !== 'Archived' && (
                         <button
                           type="button"
                           className="btn btn-sm"
@@ -305,14 +322,16 @@ export function Page() {
                           Archive
                         </button>
                       )}
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        style={{ color: '#991b1b', borderColor: '#fecaca' }}
-                        onClick={() => handleDelete(p)}
-                      >
-                        Delete
-                      </button>
+                      {canDeleteProjects && (
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          style={{ color: '#991b1b', borderColor: '#fecaca' }}
+                          onClick={() => setProjectToDelete(p)}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -326,6 +345,20 @@ export function Page() {
           </table>
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(projectToDelete)}
+        title="Delete Project"
+        message={
+          projectToDelete
+            ? `Permanently delete project "${projectToDelete.code} — ${projectToDelete.name}" and its associated tasks? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete Project"
+        loading={deleting}
+        onConfirm={confirmDeleteProject}
+        onCancel={() => setProjectToDelete(null)}
+      />
     </div>
   )
 }
