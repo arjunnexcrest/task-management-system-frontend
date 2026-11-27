@@ -2,20 +2,27 @@ import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom'
 import { env } from '@/config/env'
 import { useAuth } from '@/modules/accounts/context/AuthContext'
 
-const navItems = [
+interface NavItem {
+  to: string
+  label: string
+  ceoOnly?: boolean
+}
+
+const navItems: NavItem[] = [
   { to: '/', label: 'Home' },
+  { to: '/dashboards/ceo', label: 'CEO Dashboard', ceoOnly: true },
+  { to: '/companies', label: 'Companies', ceoOnly: true },
+  { to: '/organization', label: 'Organization' },
+  { to: '/departments', label: 'Departments' },
+  { to: '/teams', label: 'Teams' },
+  { to: '/employees', label: 'Employees' },
+  { to: '/rbac', label: 'Roles & Permissions', ceoOnly: true },
   { to: '/projects', label: 'Projects' },
   { to: '/tasks', label: 'Tasks & Subtasks' },
   { to: '/tasks/mine', label: 'My Assignments' },
   { to: '/kanban', label: 'Kanban Board' },
   { to: '/calendar', label: 'Task Calendar' },
   { to: '/workload', label: 'Workload View' },
-  { to: '/departments', label: 'Departments' },
-  { to: '/teams', label: 'Teams' },
-  { to: '/employees', label: 'Employees' },
-  { to: '/dashboards/ceo', label: 'CEO Dashboard' },
-  { to: '/companies', label: 'Companies' },
-  { to: '/organization', label: 'Organization' },
   { to: '/tracking', label: 'Time Tracking' },
   { to: '/reviews', label: 'Reviews' },
   { to: '/notifications', label: 'Notifications' },
@@ -27,6 +34,14 @@ const navItems = [
 export function AppShell() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+
+  const isCeo = Boolean(
+    user?.is_superuser ||
+      (user?.roles ?? []).some((r) => r.toUpperCase() === 'CEO') ||
+      user?.role?.toUpperCase() === 'CEO',
+  )
+
+  const visibleNavItems = navItems.filter((item) => !item.ceoOnly || isCeo)
 
   async function handleLogout() {
     await logout()
@@ -41,7 +56,7 @@ export function AppShell() {
           <span>Enterprise Project &amp; Task Suite</span>
         </div>
         <nav>
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -87,6 +102,15 @@ export function AppShell() {
                 }}
               >
                 {user.email}
+              </div>
+              <div
+                style={{
+                  fontSize: '0.7rem',
+                  color: '#93c5fd',
+                  marginTop: '0.15rem',
+                }}
+              >
+                {(user.roles ?? []).join(' · ') || user.role || 'Employee'}
               </div>
             </Link>
             <button

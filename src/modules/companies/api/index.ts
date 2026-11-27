@@ -31,6 +31,24 @@ export interface PaginatedResponse<T> {
   results: T[]
 }
 
+export interface CompanyMembershipRecord {
+  id: string
+  user: string
+  user_full_name: string
+  user_email: string
+  user_designation: string | null
+  user_is_active: boolean
+  company: string
+  company_name: string
+  company_code: string
+  company_is_active: boolean
+  role: string
+  is_active: boolean
+  status: 'Active' | 'Inactive'
+  joined_at: string
+  left_at: string | null
+}
+
 export const companiesApi = {
   list: async (params?: { search?: string; is_active?: string; page?: number }) => {
     const qs = new URLSearchParams()
@@ -46,6 +64,8 @@ export const companiesApi = {
     }
     return res
   },
+
+  myCompanies: () => apiRequest<Company[]>('api/companies/my-companies/'),
 
   get: (id: string) => apiRequest<Company>(`api/companies/${id}/`),
 
@@ -65,4 +85,54 @@ export const companiesApi = {
     apiRequest<void>(`api/companies/${id}/`, {
       method: 'DELETE',
     }),
+
+  listMembers: (companyId: string, isActive?: boolean) => {
+    const qs = isActive === undefined ? '' : `?is_active=${String(isActive)}`
+    return apiRequest<CompanyMembershipRecord[]>(`api/companies/${companyId}/members/${qs}`)
+  },
+
+  addMember: (companyId: string, payload: { user: string; role: string }) =>
+    apiRequest<CompanyMembershipRecord>(`api/companies/${companyId}/members/`, {
+      method: 'POST',
+      body: payload,
+    }),
+}
+
+export const membershipsApi = {
+  list: async (params?: { company?: string; user?: string; role?: string; is_active?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.company) qs.set('company', params.company)
+    if (params?.user) qs.set('user', params.user)
+    if (params?.role) qs.set('role', params.role)
+    if (params?.is_active) qs.set('is_active', params.is_active)
+    const query = qs.toString() ? `?${qs.toString()}` : ''
+    const res = await apiRequest<
+      PaginatedResponse<CompanyMembershipRecord> | CompanyMembershipRecord[]
+    >(`api/memberships/${query}`)
+    return Array.isArray(res) ? res : (res.results ?? [])
+  },
+
+  create: (payload: { user: string; company: string; role: string }) =>
+    apiRequest<CompanyMembershipRecord>('api/memberships/', {
+      method: 'POST',
+      body: payload,
+    }),
+
+  updateRole: (membershipId: string, role: string) =>
+    apiRequest<CompanyMembershipRecord>(`api/memberships/${membershipId}/`, {
+      method: 'PATCH',
+      body: { role },
+    }),
+
+  deactivate: (membershipId: string) =>
+    apiRequest<{ detail: string; membership: CompanyMembershipRecord }>(
+      `api/memberships/${membershipId}/deactivate/`,
+      { method: 'POST' },
+    ),
+
+  activate: (membershipId: string) =>
+    apiRequest<{ detail: string; membership: CompanyMembershipRecord }>(
+      `api/memberships/${membershipId}/activate/`,
+      { method: 'POST' },
+    ),
 }

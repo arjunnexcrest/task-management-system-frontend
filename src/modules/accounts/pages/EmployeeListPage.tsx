@@ -43,19 +43,27 @@ export function Page() {
   const [password, setPassword] = useState('')
   const [creating, setCreating] = useState(false)
 
+  const isCeo = Boolean(
+    currentUser?.is_superuser ||
+      (currentUser?.roles ?? []).some((r) => r.toUpperCase() === 'CEO') ||
+      currentUser?.role?.toUpperCase() === 'CEO',
+  )
+
   useEffect(() => {
-    companiesApi
-      .list()
-      .then((res) => {
-        setCompanies(res.results)
-        if (res.results.length > 0) setCompanyId(res.results[0].id)
+    const companyLoader = isCeo
+      ? companiesApi.list().then((res) => res.results)
+      : companiesApi.myCompanies()
+    companyLoader
+      .then((list) => {
+        setCompanies(list)
+        if (list.length > 0) setCompanyId(list[0].id)
       })
       .catch(() => null)
     projectsApi
       .getLookup()
       .then(setLookup)
       .catch(() => null)
-  }, [])
+  }, [isCeo])
 
   useEffect(() => {
     loadUsers()
@@ -165,13 +173,15 @@ export function Page() {
               My Profile
             </Link>
           )}
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setShowCreate(!showCreate)}
-          >
-            {showCreate ? 'Close Form' : '+ New Employee'}
-          </button>
+          {isCeo && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setShowCreate(!showCreate)}
+            >
+              {showCreate ? 'Close Form' : '+ New Employee'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -486,24 +496,25 @@ export function Page() {
                       <Link to={`/employees/${u.id}`} className="btn btn-sm">
                         Profile
                       </Link>
-                      {u.account_status !== 'Active' ? (
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={() => handleLifecycleAction(u, 'activate')}
-                        >
-                          Activate
-                        </button>
-                      ) : currentUser?.id !== u.id ? (
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={() => handleLifecycleAction(u, 'deactivate')}
-                        >
-                          Deactivate
-                        </button>
-                      ) : null}
-                      {(u.failed_login_attempts ?? 0) > 0 && (
+                      {isCeo &&
+                        (u.account_status !== 'Active' ? (
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            onClick={() => handleLifecycleAction(u, 'activate')}
+                          >
+                            Activate
+                          </button>
+                        ) : currentUser?.id !== u.id ? (
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            onClick={() => handleLifecycleAction(u, 'deactivate')}
+                          >
+                            Deactivate
+                          </button>
+                        ) : null)}
+                      {isCeo && (u.failed_login_attempts ?? 0) > 0 && (
                         <button
                           type="button"
                           className="btn btn-sm"

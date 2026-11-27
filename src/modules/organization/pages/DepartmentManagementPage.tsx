@@ -1,9 +1,17 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '@/modules/accounts/context/AuthContext'
 import { type LookupData, projectsApi } from '@/modules/projects/api'
 import { type Department, organizationApi } from '@/modules/organization/api'
 
 export function Page() {
+  const { user: currentUser } = useAuth()
+  const canManageDepartments = Boolean(
+    currentUser?.is_superuser ||
+      (currentUser?.roles ?? []).some((r) =>
+        ['CEO', 'COMPANYINCHARGE'].includes(r.toUpperCase()),
+      ),
+  )
   const [lookup, setLookup] = useState<LookupData | null>(null)
   const [departments, setDepartments] = useState<Department[]>([])
   const [companyFilter, setCompanyFilter] = useState('')
@@ -270,6 +278,7 @@ export function Page() {
         </div>
       )}
 
+      {canManageDepartments && (
       <div className="form-grid" style={{ marginBottom: '1.25rem' }}>
         <form className="card" onSubmit={handleCreateDepartment}>
           <h3>Create Department &amp; Assign Head</h3>
@@ -399,6 +408,7 @@ export function Page() {
           </div>
         </form>
       </div>
+      )}
 
       <div className="card">
         <form className="filter-bar" onSubmit={handleSearchSubmit}>
@@ -451,8 +461,8 @@ export function Page() {
                 <th>Department Head</th>
                 <th>Teams / Members</th>
                 <th>Projects</th>
-                <th>Assign / Change Head</th>
-                <th>Actions</th>
+                {canManageDepartments && <th>Assign / Change Head</th>}
+                {canManageDepartments && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -514,57 +524,61 @@ export function Page() {
                         {d.mapped_projects_count} project(s)
                       </span>
                     </td>
-                    <td>
-                      <select
-                        className="select"
-                        disabled={d.status !== 'Active'}
-                        value={d.department_head_id || ''}
-                        onChange={(e) => handleAssignHead(d.id, e.target.value)}
-                      >
-                        <option value="">Unassigned</option>
-                        {deptCompanyUsers.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.full_name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <div className="btn-row">
-                        {isEditing ? (
-                          <>
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              disabled={savingEdit}
-                              onClick={() => handleSaveEdit(d.id)}
-                            >
-                              Save
-                            </button>
-                            <button type="button" className="btn" onClick={cancelEdit}>
-                              Cancel
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              className="btn"
-                              onClick={() => startEdit(d)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="btn"
-                              onClick={() => handleToggleStatus(d)}
-                            >
-                              {d.status === 'Active' ? 'Deactivate' : 'Activate'}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
+                    {canManageDepartments && (
+                      <td>
+                        <select
+                          className="select"
+                          disabled={d.status !== 'Active'}
+                          value={d.department_head_id || ''}
+                          onChange={(e) => handleAssignHead(d.id, e.target.value)}
+                        >
+                          <option value="">Unassigned</option>
+                          {deptCompanyUsers.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.full_name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    )}
+                    {canManageDepartments && (
+                      <td>
+                        <div className="btn-row">
+                          {isEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                disabled={savingEdit}
+                                onClick={() => handleSaveEdit(d.id)}
+                              >
+                                Save
+                              </button>
+                              <button type="button" className="btn" onClick={cancelEdit}>
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => startEdit(d)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => handleToggleStatus(d)}
+                              >
+                                {d.status === 'Active' ? 'Deactivate' : 'Activate'}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 )
               })}
