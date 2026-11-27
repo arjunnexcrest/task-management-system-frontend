@@ -19,7 +19,7 @@ const ROLE_OPTIONS = [
 
 export function Page() {
   const { user: currentUser, isAuthenticated } = useAuth()
-  const { can } = usePermissions()
+  const { can, isCEO } = usePermissions()
   const canManageUsers = can('can_manage_users')
   const [users, setUsers] = useState<User[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
@@ -47,18 +47,20 @@ export function Page() {
   const [creating, setCreating] = useState(false)
 
   useEffect(() => {
-    companiesApi
-      .list()
-      .then((res) => {
-        setCompanies(res.results)
-        if (res.results.length > 0) setCompanyId(res.results[0].id)
+    const companyLoader = isCEO
+      ? companiesApi.list().then((res) => res.results)
+      : companiesApi.myCompanies()
+    companyLoader
+      .then((list) => {
+        setCompanies(list)
+        if (list.length > 0) setCompanyId(list[0].id)
       })
       .catch(() => null)
     projectsApi
       .getLookup()
       .then(setLookup)
       .catch(() => null)
-  }, [])
+  }, [isCEO])
 
   useEffect(() => {
     loadUsers()

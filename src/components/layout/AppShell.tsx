@@ -158,6 +158,15 @@ export function AppShell() {
               >
                 {user.email}
               </div>
+              <div
+                style={{
+                  fontSize: '0.7rem',
+                  color: '#93c5fd',
+                  marginTop: '0.15rem',
+                }}
+              >
+                {(user.roles ?? []).join(' · ') || user.role || 'Employee'}
+              </div>
             </Link>
             <button
               type="button"

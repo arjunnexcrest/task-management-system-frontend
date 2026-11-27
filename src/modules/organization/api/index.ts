@@ -99,6 +99,201 @@ export interface TeamMembershipRecord {
   status: 'Active' | 'Left'
 }
 
+export interface OrgEmployeeNode {
+  id: string
+  full_name: string
+  email: string
+  employee_id: string | null
+  designation: string | null
+  profile_image: string | null
+  role: string
+  company_id: string
+  company_name: string
+  company_code: string
+  departments: string[]
+  teams: string[]
+  manager_id: string | null
+  manager_name: string | null
+  relationship_id: string | null
+  direct_reports_count: number
+  projects_count: number
+  active_tasks_count: number
+  overdue_tasks_count: number
+  matched: boolean
+  is_head?: boolean
+  is_leader?: boolean
+  children?: OrgEmployeeNode[]
+}
+
+export interface OrgTeamNode {
+  id: string
+  type: 'team'
+  department_id: string
+  company_id: string
+  name: string
+  code: string | null
+  status: string
+  leader: OrgEmployeeNode | null
+  members_count: number
+  members: OrgEmployeeNode[]
+}
+
+export interface OrgDepartmentNode {
+  id: string
+  type: 'department'
+  company_id: string
+  name: string
+  code: string | null
+  status: string
+  head: OrgEmployeeNode | null
+  teams_count: number
+  employees_count: number
+  teams: OrgTeamNode[]
+  unassigned_members: OrgEmployeeNode[]
+}
+
+export interface OrgCompanyNode {
+  id: string
+  type: 'company'
+  name: string
+  code: string
+  status: string
+  ceos: OrgEmployeeNode[]
+  incharges: OrgEmployeeNode[]
+  project_managers: OrgEmployeeNode[]
+  departments_count: number
+  teams_count: number
+  employees_count: number
+  departments: OrgDepartmentNode[]
+  unassigned_employees: OrgEmployeeNode[]
+}
+
+export interface OrgHierarchyEdge {
+  id: string
+  company_id: string
+  employee_id: string
+  manager_id: string
+  start_date: string
+}
+
+export interface OrganizationHierarchyResponse {
+  summary: {
+    companies_count: number
+    departments_count: number
+    teams_count: number
+    employees_count: number
+    reporting_links_count: number
+    matched_employee_ids: string[]
+  }
+  structure: OrgCompanyNode[]
+  reporting_tree: OrgEmployeeNode[]
+  nodes: OrgEmployeeNode[]
+  edges: OrgHierarchyEdge[]
+}
+
+export interface HierarchyEmployeeDetail {
+  employee: {
+    id: string
+    full_name: string
+    email: string
+    username: string
+    employee_id: string | null
+    designation: string | null
+    profile_image: string | null
+    account_status: string
+    roles: string[]
+    memberships: Array<{
+      id: string
+      company_id: string
+      company_name: string
+      company_code: string
+      role: string
+    }>
+  }
+  departments: Array<{
+    id: string
+    department_id: string
+    department_name: string
+    department_code: string | null
+    company_id: string
+    company_name: string
+    is_head: boolean
+    start_date: string | null
+  }>
+  teams: Array<{
+    id: string
+    team_id: string
+    team_name: string
+    team_code: string | null
+    department_id: string
+    department_name: string
+    company_id: string
+    is_leader: boolean
+  }>
+  reporting_managers: Array<{
+    relationship_id: string
+    id: string
+    full_name: string
+    email: string
+    designation: string | null
+    company_id: string
+    company_name: string
+    start_date: string | null
+  }>
+  direct_reports: Array<{
+    relationship_id: string
+    id: string
+    full_name: string
+    email: string
+    employee_id: string | null
+    designation: string | null
+    company_id: string
+    company_name: string
+    start_date: string | null
+  }>
+  reporting_chain: Array<{
+    level: number
+    id: string
+    full_name: string
+    email: string
+    designation: string | null
+    company_id: string
+    company_name: string
+  }>
+  assigned_projects: Array<{
+    id: string
+    code: string
+    name: string
+    company_id: string
+    company_name: string
+    status: string
+    priority: string
+    progress: number
+    role_in_project: string
+    is_project_manager: boolean
+  }>
+  assigned_tasks: Array<{
+    id: string
+    title: string
+    project_id: string
+    project_code: string
+    project_name: string
+    status: string
+    priority: string
+    due_date: string | null
+    progress: number
+    is_overdue: boolean
+    relation: string
+  }>
+  task_summary: {
+    total: number
+    active: number
+    completed: number
+    overdue: number
+    blocked: number
+  }
+}
+
 function extractApiError(errText: string, status: number, statusText: string): string {
   if (!errText || errText.trim().startsWith('<')) {
     return `HTTP error ${status}: ${statusText}`
@@ -251,5 +446,28 @@ export const organizationApi = {
       `/organization/team-memberships/?team=${teamId}&status=Active`,
     )
     return unwrapList(data)
+  },
+
+  // Organization Hierarchy & Chart APIs (SRS §1.3, §5.3 & §5.4)
+  getHierarchy: (params?: {
+    company?: string
+    department?: string
+    team?: string
+    search?: string
+    include_inactive?: boolean
+  }) => {
+    const sp = new URLSearchParams()
+    if (params?.company) sp.set('company', params.company)
+    if (params?.department) sp.set('department', params.department)
+    if (params?.team) sp.set('team', params.team)
+    if (params?.search?.trim()) sp.set('search', params.search.trim())
+    if (params?.include_inactive) sp.set('include_inactive', 'true')
+    const qs = sp.toString() ? `?${sp.toString()}` : ''
+    return request<OrganizationHierarchyResponse>(`/organization/hierarchy/${qs}`)
+  },
+
+  getHierarchyEmployeeDetail: (userId: string, companyId?: string) => {
+    const qs = companyId ? `?company=${companyId}` : ''
+    return request<HierarchyEmployeeDetail>(`/organization/hierarchy/employee/${userId}/${qs}`)
   },
 }

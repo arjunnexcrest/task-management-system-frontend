@@ -1,6 +1,11 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { companiesApi, type Company } from '@/modules/companies/api'
+import {
+  companiesApi,
+  membershipsApi,
+  type Company,
+  type CompanyMembershipRecord,
+} from '@/modules/companies/api'
 import { authApi } from '@/modules/accounts/api'
 import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { ApiError } from '@/api/client'
@@ -15,12 +20,28 @@ const ROLE_OPTIONS = [
   { value: 'CEO', label: 'CEO' },
 ]
 
+function extractError(err: unknown, fallback: string): string {
+  if (err instanceof ApiError && err.body && typeof err.body === 'object') {
+    const body = err.body as Record<string, unknown>
+    if (typeof body.detail === 'string') return body.detail
+    const fieldMsgs = Object.entries(body)
+      .map(([k, v]) => {
+        if (Array.isArray(v)) return `${k}: ${v.join(', ')}`
+        if (typeof v === 'string') return `${k}: ${v}`
+        return null
+      })
+      .filter(Boolean)
+    if (fieldMsgs.length > 0) return fieldMsgs.join(' | ')
+  }
+  return err instanceof Error ? err.message : fallback
+}
+
 export function Page() {
   const { id } = useParams<{ id: string }>()
   const { can } = usePermissions()
   const canManageUsers = can('can_manage_users')
   const [company, setCompany] = useState<Company | null>(null)
-  const [users, setUsers] = useState<User[]>([])
+  const [memberships, setMemberships] = useState<CompanyMembershipRecord[]>([])
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -37,8 +58,9 @@ export function Page() {
   const [phone, setPhone] = useState('')
   const [creating, setCreating] = useState(false)
 
-  // Assign existing user
+  // Assign existing user with company role
   const [existingUserId, setExistingUserId] = useState('')
+  const [existingUserRole, setExistingUserRole] = useState('Employee')
   const [assigning, setAssigning] = useState(false)
 
   useEffect(() => {
@@ -50,17 +72,16 @@ export function Page() {
     setLoading(true)
     setError(null)
     try {
-      const [comp, compUsers, everyUser] = await Promise.all([
+      const [comp, compMemberships, everyUser] = await Promise.all([
         companiesApi.get(id),
-        authApi.listUsers({ company: id }).catch(() => [] as User[]),
+        companiesApi.listMembers(id).catch(() => [] as CompanyMembershipRecord[]),
         authApi.listUsers().catch(() => [] as User[]),
       ])
       setCompany(comp)
-      setUsers(compUsers)
+      setMemberships(compMemberships)
       setAllUsers(everyUser)
     } catch (err) {
-      const body = err instanceof ApiError ? (err.body as Record<string, unknown> | null) : null
-      setError((body?.detail as string) || 'Failed to load company details.')
+      setError(extractError(err, 'Failed to load company details.'))
     } finally {
       setLoading(false)
     }
@@ -95,14 +116,7 @@ export function Page() {
       setShowAddUser(false)
       await loadData()
     } catch (err) {
-      const body = err instanceof ApiError ? (err.body as Record<string, unknown> | null) : null
-      const msg =
-        (body?.detail as string) ||
-        (body?.email as string[])?.join(' ') ||
-        (body?.username as string[])?.join(' ') ||
-        (body?.password as string[])?.join(' ') ||
-        'Failed to create user.'
-      setError(msg)
+      setError(extractError(err, 'Failed to create user.'))
     } finally {
       setCreating(false)
     }
@@ -115,20 +129,55 @@ export function Page() {
     setError(null)
     setSuccess(null)
     try {
-      await authApi.updateUser(existingUserId, { company: id })
-      setSuccess('Existing user assigned to this company.')
+      await companiesApi.addMember(id, {
+        user: existingUserId,
+        role: existingUserRole,
+      })
+      setSuccess('Existing employee added to this company with the selected role.')
       setExistingUserId('')
+      setExistingUserRole('Employee')
       await loadData()
     } catch (err) {
-      const body = err instanceof ApiError ? (err.body as Record<string, unknown> | null) : null
-      setError((body?.detail as string) || 'Failed to assign user.')
+      setError(extractError(err, 'Failed to assign employee to company.'))
     } finally {
       setAssigning(false)
     }
   }
 
-  const companyUserIds = new Set(users.map((u) => u.id))
-  const assignableUsers = allUsers.filter((u) => !companyUserIds.has(u.id))
+  async function handleChangeMemberRole(membership: CompanyMembershipRecord, newRole: string) {
+    setError(null)
+    setSuccess(null)
+    try {
+      await membershipsApi.updateRole(membership.id, newRole)
+      setSuccess(`Updated ${membership.user_full_name}'s role in ${company?.name} to ${newRole}.`)
+      await loadData()
+    } catch (err) {
+      setError(extractError(err, 'Failed to update membership role.'))
+    }
+  }
+
+  async function handleToggleMembershipStatus(membership: CompanyMembershipRecord) {
+    setError(null)
+    setSuccess(null)
+    try {
+      if (membership.is_active) {
+        await membershipsApi.deactivate(membership.id)
+        setSuccess(
+          `Deactivated ${membership.user_full_name}'s access to ${company?.name} (history preserved).`,
+        )
+      } else {
+        await membershipsApi.activate(membership.id)
+        setSuccess(`Reactivated ${membership.user_full_name}'s access to ${company?.name}.`)
+      }
+      await loadData()
+    } catch (err) {
+      setError(extractError(err, 'Failed to update membership status.'))
+    }
+  }
+
+  const activeMembersCount = memberships.filter((m) => m.is_active).length
+  const memberUserIds = new Set(memberships.map((m) => m.user))
+  const assignableUsers = allUsers.filter((u) => u.is_active && !memberUserIds.has(u.id))
 
   if (loading) {
     return (
@@ -173,6 +222,7 @@ export function Page() {
             <button
               type="button"
               className="btn btn-primary"
+              disabled={!company.is_active}
               onClick={() => setShowAddUser(!showAddUser)}
             >
               {showAddUser ? 'Close Form' : '+ Add User'}
@@ -304,8 +354,12 @@ export function Page() {
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Members</div>
-          <div className="stat-value">{users.length}</div>
+          <div className="stat-label">Active Members</div>
+          <div className="stat-value">{activeMembersCount}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Total Memberships</div>
+          <div className="stat-value">{memberships.length}</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Created</div>
@@ -333,76 +387,115 @@ export function Page() {
             marginBottom: '1rem',
           }}
         >
-          <h3 style={{ margin: 0 }}>Company Users ({users.length})</h3>
-          {canManageUsers && assignableUsers.length > 0 && (
+          <h3 style={{ margin: 0 }}>
+            Company Memberships ({activeMembersCount} active / {memberships.length} total)
+          </h3>
+          {canManageUsers && company.is_active && assignableUsers.length > 0 && (
             <form
               onSubmit={handleAssignExisting}
-              style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}
+              style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
             >
               <select
                 className="select"
                 value={existingUserId}
                 onChange={(e) => setExistingUserId(e.target.value)}
                 required
-                style={{ minWidth: 220 }}
+                style={{ minWidth: 210 }}
               >
-                <option value="">Assign existing user…</option>
+                <option value="">Assign existing employee…</option>
                 {assignableUsers.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.full_name} ({u.email})
                   </option>
                 ))}
               </select>
+              <select
+                className="select"
+                value={existingUserRole}
+                onChange={(e) => setExistingUserRole(e.target.value)}
+              >
+                {ROLE_OPTIONS.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
               <button
                 type="submit"
-                className="btn btn-sm"
+                className="btn btn-sm btn-primary"
                 disabled={assigning || !existingUserId}
               >
-                {assigning ? 'Adding…' : '+ Assign'}
+                {assigning ? 'Adding…' : '+ Add Member'}
               </button>
             </form>
           )}
         </div>
 
-        {users.length === 0 ? (
+        {memberships.length === 0 ? (
           <p style={{ color: 'var(--muted)' }}>
-            No users assigned to this company yet. Click <strong>+ Add User</strong> above to create one.
+            No employees assigned to this company yet. Click <strong>+ Add User</strong> above to
+            create one or assign an existing employee.
           </p>
         ) : (
           <table className="data-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Designation</th>
-                <th>Status</th>
+                <th>Employee</th>
+                <th>Company Role</th>
+                <th>Membership Status</th>
+                <th>Joined / Left</th>
+                <th>Access Control</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
-                <tr key={u.id}>
+              {memberships.map((m) => (
+                <tr key={m.id}>
                   <td>
                     <Link
-                      to={`/employees/${u.id}`}
+                      to={`/employees/${m.user}`}
                       style={{ color: 'var(--accent-brand)', fontWeight: 600 }}
                     >
-                      {u.full_name}
+                      {m.user_full_name}
                     </Link>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
+                      {m.user_email}
+                      {m.user_designation ? ` · ${m.user_designation}` : ''}
+                    </div>
                   </td>
-                  <td>{u.email}</td>
                   <td>
-                    <span className="badge">{u.role || (u.roles ?? [])[0] || 'Employee'}</span>
+                    <select
+                      className="select"
+                      value={m.role}
+                      disabled={!canManageUsers || !m.is_active}
+                      onChange={(e) => handleChangeMemberRole(m, e.target.value)}
+                    >
+                      {ROLE_OPTIONS.map((r) => (
+                        <option key={r.value} value={r.value}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </select>
                   </td>
-                  <td>{u.designation || '—'}</td>
                   <td>
                     <span
-                      className={
-                        u.is_active ? 'badge badge-active' : 'badge badge-critical'
-                      }
+                      className={m.is_active ? 'badge badge-active' : 'badge badge-critical'}
                     >
-                      {u.is_active ? 'Active' : 'Inactive'}
+                      {m.status}
                     </span>
+                  </td>
+                  <td style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                    <div>Joined: {m.joined_at?.slice(0, 10) || '—'}</div>
+                    {m.left_at && <div>Revoked: {m.left_at.slice(0, 10)}</div>}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      disabled={!canManageUsers || (!company.is_active && !m.is_active)}
+                      onClick={() => handleToggleMembershipStatus(m)}
+                    >
+                      {m.is_active ? 'Revoke Access' : 'Restore Access'}
+                    </button>
                   </td>
                 </tr>
               ))}
