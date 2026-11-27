@@ -133,6 +133,36 @@ export interface ReportingHierarchyResponse {
   edges: HierarchyEdge[]
 }
 
+export interface UserCapabilities {
+  can_view_ceo_dashboard: boolean
+  can_manage_companies: boolean
+  can_view_companies: boolean
+  can_manage_rbac: boolean
+  can_manage_settings: boolean
+  can_manage_users: boolean
+  can_view_employees: boolean
+  can_create_departments: boolean
+  can_manage_departments: boolean
+  can_view_departments: boolean
+  can_create_teams: boolean
+  can_manage_teams: boolean
+  can_manage_team_members: boolean
+  can_view_teams: boolean
+  can_create_projects: boolean
+  can_edit_projects: boolean
+  can_delete_projects: boolean
+  can_manage_project_assignments: boolean
+  can_create_tasks: boolean
+  can_edit_tasks: boolean
+  can_delete_tasks: boolean
+  can_assign_tasks: boolean
+  can_review_tasks: boolean
+  can_configure_approval_chains: boolean
+  can_view_workload: boolean
+  can_view_reports: boolean
+  can_manage_risks: boolean
+}
+
 export interface User {
   id: string
   email: string
@@ -141,6 +171,7 @@ export interface User {
   company?: string | null
   company_name?: string | null
   role?: string
+  capabilities?: UserCapabilities
   memberships?: CompanyMembershipSummary[]
   employee_id: string | null
   designation: string | null

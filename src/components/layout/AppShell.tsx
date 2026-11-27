@@ -1,71 +1,103 @@
 import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom'
 import { env } from '@/config/env'
 import { useAuth } from '@/modules/accounts/context/AuthContext'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
+import type { UserCapabilities } from '@/types'
 
 interface NavItem {
   to: string
   label: string
-  ceoOnly?: boolean
+  section: 'Overview' | 'Delivery' | 'Organization' | 'Governance'
+  capability?: keyof UserCapabilities
+  hideForCeo?: boolean
 }
 
-const navItems: NavItem[] = [
-  { to: '/', label: 'Home' },
-  { to: '/dashboards/ceo', label: 'CEO Dashboard', ceoOnly: true },
-  { to: '/companies', label: 'Companies', ceoOnly: true },
-  { to: '/organization', label: 'Organization' },
-  { to: '/departments', label: 'Departments' },
-  { to: '/teams', label: 'Teams' },
-  { to: '/employees', label: 'Employees' },
-  { to: '/rbac', label: 'Roles & Permissions', ceoOnly: true },
-  { to: '/projects', label: 'Projects' },
-  { to: '/tasks', label: 'Tasks & Subtasks' },
-  { to: '/tasks/mine', label: 'My Assignments' },
-  { to: '/kanban', label: 'Kanban Board' },
-  { to: '/calendar', label: 'Task Calendar' },
-  { to: '/workload', label: 'Workload View' },
-  { to: '/tracking', label: 'Time Tracking' },
-  { to: '/reviews', label: 'Reviews' },
-  { to: '/notifications', label: 'Notifications' },
-  { to: '/reports', label: 'Reports' },
-  { to: '/risks', label: 'Risks' },
-  { to: '/settings', label: 'Settings' },
+const ALL_NAV_ITEMS: NavItem[] = [
+  // Overview
+  { to: '/dashboards/ceo', label: 'CEO Dashboard', section: 'Overview', capability: 'can_view_ceo_dashboard' },
+  { to: '/dashboards/role', label: 'My Dashboard', section: 'Overview', hideForCeo: true },
+  { to: '/tasks/mine', label: 'My Assignments', section: 'Overview' },
+  { to: '/notifications', label: 'Notifications', section: 'Overview' },
+
+  // Delivery & Execution
+  { to: '/projects', label: 'Projects', section: 'Delivery' },
+  { to: '/tasks', label: 'Tasks & Subtasks', section: 'Delivery' },
+  { to: '/kanban', label: 'Kanban Board', section: 'Delivery' },
+  { to: '/calendar', label: 'Task Calendar', section: 'Delivery' },
+  { to: '/reviews', label: 'Review Queue', section: 'Delivery', capability: 'can_review_tasks' },
+  { to: '/workload', label: 'Workload View', section: 'Delivery', capability: 'can_view_workload' },
+  { to: '/tracking', label: 'Time Tracking', section: 'Delivery' },
+  { to: '/reports', label: 'Reports', section: 'Delivery', capability: 'can_view_reports' },
+  { to: '/risks', label: 'Risks & Issues', section: 'Delivery', capability: 'can_manage_risks' },
+
+  // Organization
+  { to: '/companies', label: 'Companies', section: 'Organization', capability: 'can_view_companies' },
+  { to: '/departments', label: 'Departments', section: 'Organization', capability: 'can_view_departments' },
+  { to: '/teams', label: 'Teams', section: 'Organization', capability: 'can_view_teams' },
+  { to: '/employees', label: 'Employees', section: 'Organization', capability: 'can_view_employees' },
+  { to: '/organization', label: 'Org Chart', section: 'Organization', capability: 'can_view_employees' },
+
+  // Governance (CEO Only)
+  { to: '/rbac', label: 'Roles & Permissions', section: 'Governance', capability: 'can_manage_rbac' },
+  { to: '/settings', label: 'System Settings', section: 'Governance', capability: 'can_manage_settings' },
 ]
+
+const SECTIONS: NavItem['section'][] = ['Overview', 'Delivery', 'Organization', 'Governance']
 
 export function AppShell() {
   const { user, logout } = useAuth()
+  const { isCEO, roleLabel, primaryRole, can } = usePermissions()
   const navigate = useNavigate()
-
-  const isCeo = Boolean(
-    user?.is_superuser ||
-      (user?.roles ?? []).some((r) => r.toUpperCase() === 'CEO') ||
-      user?.role?.toUpperCase() === 'CEO',
-  )
-
-  const visibleNavItems = navItems.filter((item) => !item.ceoOnly || isCeo)
 
   async function handleLogout() {
     await logout()
     navigate('/login', { replace: true })
   }
 
+  const visibleItems = ALL_NAV_ITEMS.filter((item) => {
+    if (item.hideForCeo && isCEO) return false
+    if (item.capability && !can(item.capability)) return false
+    return true
+  })
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
           <strong>{env.appName}</strong>
-          <span>Enterprise Project &amp; Task Suite</span>
+          <span>{roleLabel} Workspace</span>
         </div>
-        <nav>
-          {visibleNavItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
-              className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
-            >
-              {item.label}
-            </NavLink>
-          ))}
+
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+          {SECTIONS.map((section) => {
+            const items = visibleItems.filter((i) => i.section === section)
+            if (items.length === 0) return null
+            return (
+              <div key={section} style={{ display: 'grid', gap: '0.18rem' }}>
+                <div
+                  style={{
+                    fontSize: '0.66rem',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.09em',
+                    color: 'rgba(148, 163, 184, 0.72)',
+                    padding: '0 0.75rem 0.25rem',
+                  }}
+                >
+                  {section}
+                </div>
+                {items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            )
+          })}
         </nav>
 
         {user && (
@@ -82,15 +114,38 @@ export function AppShell() {
             <Link to={`/employees/${user.id}`} style={{ padding: '0 0.4rem' }}>
               <div
                 style={{
-                  fontSize: '0.84rem',
-                  fontWeight: 600,
-                  color: '#ffffff',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.4rem',
+                  marginBottom: '0.18rem',
                 }}
               >
-                {user.full_name || user.username}
+                <span
+                  style={{
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    color: '#ffffff',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {user.full_name || user.username}
+                </span>
+                <span
+                  style={{
+                    fontSize: '0.66rem',
+                    fontWeight: 600,
+                    padding: '0.12rem 0.45rem',
+                    borderRadius: '999px',
+                    background: isCEO ? 'rgba(59, 130, 246, 0.24)' : 'rgba(148, 163, 184, 0.2)',
+                    color: isCEO ? '#93c5fd' : '#e2e8f0',
+                    flexShrink: 0,
+                  }}
+                >
+                  {primaryRole}
+                </span>
               </div>
               <div
                 style={{

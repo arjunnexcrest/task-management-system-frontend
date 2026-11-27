@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useAuth } from '@/modules/accounts/context/AuthContext'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { type LookupData, projectsApi } from '@/modules/projects/api'
 import {
   type Team,
@@ -9,13 +9,9 @@ import {
 } from '@/modules/organization/api'
 
 export function Page() {
-  const { user: currentUser } = useAuth()
-  const canManageTeams = Boolean(
-    currentUser?.is_superuser ||
-      (currentUser?.roles ?? []).some((r) =>
-        ['CEO', 'COMPANYINCHARGE', 'DEPARTMENTHEAD'].includes(r.toUpperCase()),
-      ),
-  )
+  const { can } = usePermissions()
+  const canManageTeams = can('can_manage_teams')
+  const canManageTeamMembers = can('can_manage_team_members')
   const [lookup, setLookup] = useState<LookupData | null>(null)
   const [teams, setTeams] = useState<Team[]>([])
   const [companyFilter, setCompanyFilter] = useState('')
@@ -336,9 +332,10 @@ export function Page() {
         </div>
       )}
 
-      {canManageTeams && (
-      <div className="form-grid" style={{ marginBottom: '1.25rem' }}>
-        <form className="card" onSubmit={handleCreateTeam}>
+      {(canManageTeams || canManageTeamMembers) && (
+        <div className="form-grid" style={{ marginBottom: '1.25rem' }}>
+          {canManageTeams && (
+            <form className="card" onSubmit={handleCreateTeam}>
           <h3>Create Team &amp; Assign Team Leader</h3>
           <div className="form-grid" style={{ marginTop: '0.75rem' }}>
             <div className="form-field">
@@ -400,7 +397,9 @@ export function Page() {
             </button>
           </div>
         </form>
+          )}
 
+          {canManageTeamMembers && (
         <form className="card" onSubmit={handleAddMember}>
           <h3>Manage Team Members (SRS §5.2)</h3>
           <div className="form-grid" style={{ marginTop: '0.75rem' }}>
@@ -508,6 +507,7 @@ export function Page() {
             </div>
           )}
         </form>
+          )}
       </div>
       )}
 

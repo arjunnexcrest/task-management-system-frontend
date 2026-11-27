@@ -7,6 +7,7 @@ import {
   type CompanyMembershipRecord,
 } from '@/modules/companies/api'
 import { authApi } from '@/modules/accounts/api'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { ApiError } from '@/api/client'
 import type { User } from '@/types'
 
@@ -37,6 +38,8 @@ function extractError(err: unknown, fallback: string): string {
 
 export function Page() {
   const { id } = useParams<{ id: string }>()
+  const { can } = usePermissions()
+  const canManageUsers = can('can_manage_users')
   const [company, setCompany] = useState<Company | null>(null)
   const [memberships, setMemberships] = useState<CompanyMembershipRecord[]>([])
   const [allUsers, setAllUsers] = useState<User[]>([])
@@ -215,14 +218,16 @@ export function Page() {
           >
             {company.is_active ? 'Active' : 'Inactive'}
           </span>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={!company.is_active}
-            onClick={() => setShowAddUser(!showAddUser)}
-          >
-            {showAddUser ? 'Close Form' : '+ Add User'}
-          </button>
+          {canManageUsers && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!company.is_active}
+              onClick={() => setShowAddUser(!showAddUser)}
+            >
+              {showAddUser ? 'Close Form' : '+ Add User'}
+            </button>
+          )}
           <Link to="/companies" className="btn">
             ← All Companies
           </Link>
@@ -247,7 +252,7 @@ export function Page() {
         </div>
       )}
 
-      {showAddUser && (
+      {canManageUsers && showAddUser && (
         <form onSubmit={handleCreateUser} className="card">
           <h3>Create New User in {company.name}</h3>
           <div className="form-grid">
@@ -385,7 +390,7 @@ export function Page() {
           <h3 style={{ margin: 0 }}>
             Company Memberships ({activeMembersCount} active / {memberships.length} total)
           </h3>
-          {company.is_active && assignableUsers.length > 0 && (
+          {canManageUsers && company.is_active && assignableUsers.length > 0 && (
             <form
               onSubmit={handleAssignExisting}
               style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
@@ -461,7 +466,7 @@ export function Page() {
                     <select
                       className="select"
                       value={m.role}
-                      disabled={!m.is_active}
+                      disabled={!canManageUsers || !m.is_active}
                       onChange={(e) => handleChangeMemberRole(m, e.target.value)}
                     >
                       {ROLE_OPTIONS.map((r) => (
@@ -486,7 +491,7 @@ export function Page() {
                     <button
                       type="button"
                       className="btn btn-sm"
-                      disabled={!company.is_active && !m.is_active}
+                      disabled={!canManageUsers || (!company.is_active && !m.is_active)}
                       onClick={() => handleToggleMembershipStatus(m)}
                     >
                       {m.is_active ? 'Revoke Access' : 'Restore Access'}

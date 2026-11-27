@@ -1,17 +1,13 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useAuth } from '@/modules/accounts/context/AuthContext'
+import { usePermissions } from '@/modules/accounts/hooks/usePermissions'
 import { type LookupData, projectsApi } from '@/modules/projects/api'
 import { type Department, organizationApi } from '@/modules/organization/api'
 
 export function Page() {
-  const { user: currentUser } = useAuth()
-  const canManageDepartments = Boolean(
-    currentUser?.is_superuser ||
-      (currentUser?.roles ?? []).some((r) =>
-        ['CEO', 'COMPANYINCHARGE'].includes(r.toUpperCase()),
-      ),
-  )
+  const { can } = usePermissions()
+  const canCreateDepts = can('can_create_departments')
+  const canManageDepts = can('can_manage_departments')
   const [lookup, setLookup] = useState<LookupData | null>(null)
   const [departments, setDepartments] = useState<Department[]>([])
   const [companyFilter, setCompanyFilter] = useState('')
@@ -278,9 +274,10 @@ export function Page() {
         </div>
       )}
 
-      {canManageDepartments && (
-      <div className="form-grid" style={{ marginBottom: '1.25rem' }}>
-        <form className="card" onSubmit={handleCreateDepartment}>
+      {(canCreateDepts || canManageDepts) && (
+        <div className="form-grid" style={{ marginBottom: '1.25rem' }}>
+          {canCreateDepts && (
+            <form className="card" onSubmit={handleCreateDepartment}>
           <h3>Create Department &amp; Assign Head</h3>
           <div className="form-grid" style={{ marginTop: '0.75rem' }}>
             <div className="form-field">
@@ -333,14 +330,16 @@ export function Page() {
               </select>
             </div>
           </div>
-          <div className="btn-row" style={{ marginTop: '1rem' }}>
-            <button type="submit" className="btn btn-primary">
-              + Create Department
-            </button>
-          </div>
-        </form>
+            <div className="btn-row" style={{ marginTop: '1rem' }}>
+              <button type="submit" className="btn btn-primary">
+                + Create Department
+              </button>
+            </div>
+          </form>
+          )}
 
-        <form className="card" onSubmit={handleTransferEmployee}>
+          {canManageDepts && (
+          <form className="card" onSubmit={handleTransferEmployee}>
           <h3>Assign / Transfer Employee to Department (SRS §5.1)</h3>
           <div className="form-grid" style={{ marginTop: '0.75rem' }}>
             <div className="form-field">
@@ -407,6 +406,7 @@ export function Page() {
             </button>
           </div>
         </form>
+          )}
       </div>
       )}
 
@@ -461,8 +461,8 @@ export function Page() {
                 <th>Department Head</th>
                 <th>Teams / Members</th>
                 <th>Projects</th>
-                {canManageDepartments && <th>Assign / Change Head</th>}
-                {canManageDepartments && <th>Actions</th>}
+                {canCreateDepts && <th>Assign / Change Head</th>}
+                {canCreateDepts && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -524,7 +524,7 @@ export function Page() {
                         {d.mapped_projects_count} project(s)
                       </span>
                     </td>
-                    {canManageDepartments && (
+                    {canCreateDepts && (
                       <td>
                         <select
                           className="select"
@@ -541,7 +541,7 @@ export function Page() {
                         </select>
                       </td>
                     )}
-                    {canManageDepartments && (
+                    {canCreateDepts && (
                       <td>
                         <div className="btn-row">
                           {isEditing ? (
